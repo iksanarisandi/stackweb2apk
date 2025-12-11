@@ -1,0 +1,35 @@
+# ============================================
+# Cloudflare Pages configuration for Web2APK frontend
+# Requirements: 1.5
+# ============================================
+name = "web2apk-web"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ============================================
+# Pages build configuration
+# Build command: pnpm run build:cf
+# Output directory: .vercel/output/static
+# ============================================
+pages_build_output_dir = ".vercel/output/static"
+
+# ============================================
+# Development environment variables
+# ============================================
+[vars]
+NEXT_PUBLIC_API_URL = "https://web2apk-api.threadsauto.workers.dev"
+NEXT_PUBLIC_ENVIRONMENT = "development"
+
+# ============================================
+# Preview environment (for PR deployments)
+# ============================================
+[env.preview.vars]
+NEXT_PUBLIC_API_URL = "https://web2apk-api-staging.workers.dev"
+NEXT_PUBLIC_ENVIRONMENT = "preview"
+
+# ============================================
+# Production environment
+# ============================================
+[env.production.vars]
+NEXT_PUBLIC_API_URL = "https://web2apk-api.threadsauto.workers.dev"
+NEXT_PUBLIC_ENVIRONMENT = "production"

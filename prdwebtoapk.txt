@@ -1,0 +1,126 @@
+Product Requirements Document (PRD): Web2APK SaaS Generator
+Product Overview
+Web2APK adalah SaaS berbasis Cloudflare yang mengonversi website menjadi Android WebView app siap rilis Play Store (AAB/APK signed) dengan custom icon, nama app, package name, dan permissions standar (internet, camera, external links). Model pricing Rp35.000 per generate, no free tier. User login via email/password (bcrypt), bayar manual QRIS + konfirmasi WA ke 6282347303153. Full stack Cloudflare: Next.js (frontend), Hono (backend Workers), D1 (DB), R2 (APK storage). Domain awal: app.web2apk.pages.dev.
+
+Target launch MVP: 2 minggu, estimasi 20 generate/hari awal (revenue Rp700k/hari), scale auto via Workers edge compute.​
+
+Target Users & Market
+Primary: Developer Indonesia/SaaS founder (seperti Anda) yang butuh APK cepat untuk Play Store dari web app tanpa coding native.​
+
+Use Case: Konversi PWA/SaaS web (finance tracker, laundry app) ke APK dengan icon custom, handle external links (WA/Telegram), kamera access.​
+
+Market Size: 10k+ developer lokal cari jasa Rp250k-500k/proyek; SaaS Rp35k lebih scalable.​
+
+Pain Points: Manual WebView boilerplate, signing keystore, build environment setup.
+
+Key Features & User Flow
+text
+1. Login/Register (email + bcrypt password) → Dashboard
+2. Form: URL web, Nama App, Package Name (panduan: com.namaapp.tahun), Upload Icon (512x512 PNG)
+3. Checkout: QRIS Rp35.000 → Kirim WA konfirmasi ke 6282347303153
+4. Admin konfirm → Generate APK (5-10 menit) → Download link dari R2
+5. History: List APK generated (URL, tanggal, download count)
+Core APK Output:
+
+WebView full-screen, JS enabled, external links via Intent, kamera/mic via WebChromeClient.​
+
+Splash screen default (logo + loading), permissions: INTERNET, CAMERA, ACCESS_NETWORK_STATE.
+
+Signed AAB/APK via GitHub Actions (template repo auto-update config).​
+
+Technical Stack & Architecture
+text
+Frontend: Next.js 15 (App Router) → Cloudflare Pages
+Backend: Hono (Workers) → API endpoints (/generate, /payment, /download)
+Database: Cloudflare D1 (SQLite) → users, generates, payments
+Storage: Cloudflare R2 → APK files (presigned URLs, lifecycle 30 hari)
+Auth: JWT + bcrypt (D1 hashed passwords)
+Payment: QRIS static code → Manual WA konfirm (admin dashboard)
+Build: GitHub Actions → Template Android Studio WebView → Replace vars → Sign → Upload R2
+Domain: app.web2apk.pages.dev (Cloudflare DNS)
+D1 Schema:
+
+text
+users: id, email, password_hash, wa_number, credits, created_at
+generates: id, user_id, url, app_name, package_name, icon_key, apk_key, status, created_at
+payments: id, user_id, generate_id, amount, qris_code, status, wa_sent_at
+Detailed Requirements
+User Authentication
+Register: Email unique, password min 8 char (bcrypt salt), auto kirim WA verif link.
+
+Login: JWT 24h expiry, refresh token pattern.
+
+Dashboard: Profile edit (WA number), generate history, download buttons.
+
+Generate Flow
+Input Validation: URL valid HTTPS, package name format com.domain.year (e.g., com.web2apk.2025), icon 512x512 PNG <2MB.
+
+Preview: Real-time mockup APK splash + WebView screenshot.
+
+Payment: Static QRIS Rp35.000 (generate unik per transaksi via text), tombol "Kirim WA Konfirmasi" auto-compose pesan ke 6282347303153:
+
+text
+Halo admin, saya bayar Rp35k untuk generate:
+Email: user@example.com
+Generate ID: #123
+Bukti: [screenshot upload]
+APK Generation Pipeline
+text
+Hono POST /generate → 
+1. Validate & save config to D1 (status: pending)
+2. Return QRIS code + WA template
+3. Admin konfirm → PATCH status: confirmed
+4. Trigger GitHub Actions via webhook:
+   - Clone template-webview-android
+   - Replace: MainActivity.java (URL), strings.xml (app_name), manifest.xml (permissions), icon.png
+   - ./gradlew bundleRelease (AAB signed dengan upload keystore ke GitHub Secrets)
+   - Upload AAB → R2 via wrangler r2
+5. Update D1 status: ready + R2 public URL (expires 7 hari)
+Template Repo Structure (buat di GitHub):
+
+text
+android-webview-template/
+├── app/src/main/java/.../MainActivity.java (WebView + permissions)
+├── app/src/main/res/drawable/ic_launcher.png
+├── app/build.gradle (minSdk 24, targetSdk 35)
+├── gradle.properties (signing config)
+└── GitHub Actions: build.yml (trigger via repository_dispatch)
+Admin Dashboard (WA 6282347303153)
+List pending payments → 1-click confirm → Auto trigger build.
+
+Monitor queue (max 5 concurrent builds via Actions concurrency).
+
+Analytics: Generate total, revenue, user growth.
+
+Manual R2 cleanup expired APK.
+
+Pricing & Monetization
+Rp35.000 per generate (AAB + APK universal).
+
+No free tier, no subscription (pure pay-per-use).
+
+Revenue split: Cloudflare ~Rp500/build (R2 + Workers), GitHub Actions free tier 2000min/bln cukup 100+ builds.
+
+Upsell: Package name premium check (unik via Play Store API), custom splash Rp+10k.
+
+Success Metrics (30 hari post-launch)
+Metric	Target
+DAU	20 users
+Generate/hari	20 (Rp700k revenue)
+Retention D7	40%
+Build success rate	98%
+Avg time-to-APK	<10 menit post-payment
+Risks & Mitigations
+GitHub Actions quota: Upgrade Pro $4/bln jika exceed.
+
+Play Store rejection: Template compliant Android 14+, no policy violation.​
+
+QRIS manual bottleneck: Limit 50/hari, hire VA jika scale.
+
+R2 costs: APK ~5MB → Rp100/build, lifecycle auto-delete.
+
+MVP Development Timeline (2 minggu)
+text
+Week 1: Next.js UI + Hono auth + D1 schema + QRIS static
+Week 2: GitHub Actions pipeline + WA integration + Admin dashboard
+Launch: Test 10 generates internal → Public

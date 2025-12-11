@@ -1,0 +1,39 @@
+{
+  "name": "@web2apk/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:cf": "npx @cloudflare/next-on-pages",
+    "preview": "npx wrangler pages dev .vercel/output/static",
+    "deploy": "npx wrangler pages deploy .vercel/output/static",
+    "start": "next start",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@web2apk/shared": "workspace:*",
+    "next": "^15.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.0",
+    "@eslint/js": "^9.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.0",
+    "typescript-eslint": "^8.0.0",
+    "vercel": "^37.0.0",
+    "vitest": "^1.0.0",
+    "wrangler": "^3.0.0"
+  }
+}

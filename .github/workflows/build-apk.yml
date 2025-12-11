@@ -1,0 +1,578 @@
+# GitHub Actions workflow for building Android APK from WebView template
+# Triggered via repository_dispatch from Web2APK API when payment is confirmed
+# Validates: Requirements 6.1, 6.2, 6.3, 6.4
+
+name: Build APK
+
+on:
+  repository_dispatch:
+    types: [build_apk]
+
+env:
+  GENERATE_ID: ${{ github.event.client_payload.generate_id }}
+  APP_URL: ${{ github.event.client_payload.url }}
+  APP_NAME: ${{ github.event.client_payload.app_name }}
+  PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
+  ICON_URL: ${{ github.event.client_payload.icon_url }}
+  CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Validate payload
+        run: |
+          if [ -z "$GENERATE_ID" ] || [ -z "$APP_URL" ] || [ -z "$APP_NAME" ] || [ -z "$PACKAGE_NAME" ]; then
+            echo "Error: Missing required payload fields"
+            exit 1
+          fi
+          echo "Building APK for generate_id: $GENERATE_ID"
+          echo "URL: $APP_URL"
+          echo "App Name: $APP_NAME"
+          echo "Package Name: $PACKAGE_NAME"
+
+      - name: Checkout template repository
+        uses: actions/checkout@v4
+        with:
+          path: template
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Download icon from R2
+        run: |
+          mkdir -p template/webviewCatatUang/app/src/main/res/mipmap-xxxhdpi
+          curl -L -o icon_512.png "$ICON_URL" || {
+            echo "Failed to download icon"
+            exit 1
+          }
+          echo "Icon downloaded successfully"
+
+      - name: Install ImageMagick for icon processing
+        run: sudo apt-get update && sudo apt-get install -y imagemagick
+
+      - name: Generate icon sizes
+        run: |
+          # Generate different density icons from 512x512 source
+          # mdpi: 48x48, hdpi: 72x72, xhdpi: 96x96, xxhdpi: 144x144, xxxhdpi: 192x192
+          convert icon_512.png -resize 48x48 template/webviewCatatUang/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          convert icon_512.png -resize 72x72 template/webviewCatatUang/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          convert icon_512.png -resize 96x96 template/webviewCatatUang/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          convert icon_512.png -resize 144x144 template/webviewCatatUang/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          convert icon_512.png -resize 192x192 template/webviewCatatUang/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          
+          # Also create round icons
+          cp template/webviewCatatUang/app/src/main/res/mipmap-mdpi/ic_launcher.png template/webviewCatatUang/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+          cp template/webviewCatatUang/app/src/main/res/mipmap-hdpi/ic_launcher.png template/webviewCatatUang/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+          cp template/webviewCatatUang/app/src/main/res/mipmap-xhdpi/ic_launcher.png template/webviewCatatUang/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+          cp template/webviewCatatUang/app/src/main/res/mipmap-xxhdpi/ic_launcher.png template/webviewCatatUang/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+          cp template/webviewCatatUang/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png template/webviewCatatUang/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+          
+          echo "Icon sizes generated successfully"
+
+
+      - name: Extract package name parts
+        id: package
+        run: |
+          # Extract package parts for directory structure
+          # e.g., com.example.app -> com/example/app
+          PACKAGE_PATH=$(echo "$PACKAGE_NAME" | tr '.' '/')
+          echo "package_path=$PACKAGE_PATH" >> $GITHUB_OUTPUT
+          
+          # Extract the last part for class references
+          PACKAGE_LAST=$(echo "$PACKAGE_NAME" | rev | cut -d'.' -f1 | rev)
+          echo "package_last=$PACKAGE_LAST" >> $GITHUB_OUTPUT
+
+      - name: Replace MainActivity.kt
+        run: |
+          # Create new package directory structure
+          mkdir -p "template/webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}"
+          
+          # Create new MainActivity.kt with updated package and URL
+          cat > "template/webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt" << 'KOTLIN_EOF'
+          package __PACKAGE_NAME__
+
+          import android.annotation.SuppressLint
+          import android.content.Context
+          import android.content.Intent
+          import android.net.ConnectivityManager
+          import android.net.NetworkCapabilities
+          import android.net.Uri
+          import android.os.Bundle
+          import android.webkit.*
+          import androidx.appcompat.app.AppCompatActivity
+          import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+
+          class MainActivity : AppCompatActivity() {
+
+              private lateinit var webView: WebView
+              private lateinit var swipeRefreshLayout: SwipeRefreshLayout
+              private val url = "__APP_URL__"
+
+              @SuppressLint("SetJavaScriptEnabled")
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_main)
+
+                  webView = findViewById(R.id.webView)
+                  swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
+
+                  setupWebView()
+                  setupSwipeRefresh()
+
+                  if (isNetworkAvailable()) {
+                      webView.loadUrl(url)
+                  } else {
+                      webView.loadUrl("file:///android_asset/error.html")
+                  }
+              }
+
+              private fun setupWebView() {
+                  val webSettings = webView.settings
+                  webSettings.javaScriptEnabled = true
+                  webSettings.domStorageEnabled = true
+                  webSettings.databaseEnabled = true
+                  webSettings.cacheMode = WebSettings.LOAD_DEFAULT
+                  webSettings.loadWithOverviewMode = true
+                  webSettings.useWideViewPort = true
+                  webSettings.setSupportZoom(true)
+                  webSettings.builtInZoomControls = true
+                  webSettings.displayZoomControls = false
+
+                  webView.webViewClient = object : WebViewClient() {
+                      override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                          super.onPageStarted(view, url, favicon)
+                          swipeRefreshLayout.isRefreshing = true
+                      }
+
+                      override fun onPageFinished(view: WebView?, url: String?) {
+                          super.onPageFinished(view, url)
+                          swipeRefreshLayout.isRefreshing = false
+                      }
+
+                      override fun onReceivedError(
+                          view: WebView?,
+                          request: WebResourceRequest?,
+                          error: WebResourceError?
+                      ) {
+                          super.onReceivedError(view, request, error)
+                          swipeRefreshLayout.isRefreshing = false
+                          if (request?.isForMainFrame == true) {
+                              webView.loadUrl("file:///android_asset/error.html")
+                          }
+                      }
+
+                      override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                          val requestUrl = request?.url?.toString() ?: return false
+                          return handleExternalUrl(requestUrl)
+                      }
+
+                      @Deprecated("Deprecated in Java")
+                      override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                          return url?.let { handleExternalUrl(it) } ?: false
+                      }
+                  }
+
+                  webView.webChromeClient = object : WebChromeClient() {
+                      override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                          super.onProgressChanged(view, newProgress)
+                          swipeRefreshLayout.isRefreshing = newProgress < 100
+                      }
+                  }
+              }
+
+              private fun handleExternalUrl(url: String): Boolean {
+                  if (url.startsWith("https://wa.me/") || 
+                      url.startsWith("https://api.whatsapp.com/") ||
+                      url.startsWith("whatsapp://") ||
+                      url.contains("whatsapp.com")) {
+                      openExternalApp(url)
+                      return true
+                  }
+
+                  if (url.startsWith("tel:")) {
+                      openExternalApp(url)
+                      return true
+                  }
+
+                  if (url.startsWith("mailto:")) {
+                      openExternalApp(url)
+                      return true
+                  }
+
+                  if (url.startsWith("sms:")) {
+                      openExternalApp(url)
+                      return true
+                  }
+
+                  if (url.startsWith("intent:")) {
+                      try {
+                          val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                          if (intent.resolveActivity(packageManager) != null) {
+                              startActivity(intent)
+                          }
+                      } catch (e: Exception) {
+                          e.printStackTrace()
+                      }
+                      return true
+                  }
+
+                  if (url.startsWith("tg:") || url.contains("t.me/")) {
+                      openExternalApp(url)
+                      return true
+                  }
+
+                  if (url.contains("play.google.com") || url.startsWith("market://")) {
+                      openExternalApp(url)
+                      return true
+                  }
+
+                  return false
+              }
+
+              private fun openExternalApp(url: String) {
+                  try {
+                      val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                      startActivity(intent)
+                  } catch (e: Exception) {
+                      e.printStackTrace()
+                  }
+              }
+
+              private fun setupSwipeRefresh() {
+                  swipeRefreshLayout.setOnRefreshListener {
+                      webView.reload()
+                  }
+
+                  swipeRefreshLayout.setColorSchemeResources(
+                      android.R.color.holo_blue_bright,
+                      android.R.color.holo_green_light,
+                      android.R.color.holo_orange_light,
+                      android.R.color.holo_red_light
+                  )
+              }
+
+              private fun isNetworkAvailable(): Boolean {
+                  val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                  val activeNetwork = connectivityManager.activeNetwork ?: return false
+                  val networkCapabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+                  return networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+              }
+
+              @Deprecated("Deprecated in Java")
+              override fun onBackPressed() {
+                  if (webView.canGoBack()) {
+                      webView.goBack()
+                  } else {
+                      super.onBackPressed()
+                  }
+              }
+          }
+          KOTLIN_EOF
+          
+          # Replace placeholders with actual values
+          sed -i "s/__PACKAGE_NAME__/$PACKAGE_NAME/g" "template/webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt"
+          sed -i "s|__APP_URL__|$APP_URL|g" "template/webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt"
+          
+          # Remove old package directory
+          rm -rf template/webviewCatatUang/app/src/main/java/com/catatung
+          
+          echo "MainActivity.kt replaced successfully"
+
+
+      - name: Replace strings.xml (app name)
+        run: |
+          cat > template/webviewCatatUang/app/src/main/res/values/strings.xml << EOF
+          <resources>
+              <string name="app_name">${APP_NAME}</string>
+          </resources>
+          EOF
+          echo "strings.xml replaced successfully"
+
+      - name: Replace build.gradle (package name and signing)
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          cat > template/webviewCatatUang/app/build.gradle << 'GRADLE_EOF'
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+
+          android {
+              namespace '__PACKAGE_NAME__'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "__PACKAGE_NAME__"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+
+                  testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+              }
+
+              signingConfigs {
+                  release {
+                      storeFile file('release-keystore.jks')
+                      storePassword '__KEYSTORE_PASSWORD__'
+                      keyAlias '__KEY_ALIAS__'
+                      keyPassword '__KEY_PASSWORD__'
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled true
+                      shrinkResources true
+                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+                      signingConfig signingConfigs.release
+                  }
+                  debug {
+                      minifyEnabled false
+                  }
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+
+              buildFeatures {
+                  viewBinding true
+              }
+
+              packagingOptions {
+                  jniLibs {
+                      useLegacyPackaging = true
+                  }
+              }
+
+              bundle {
+                  language {
+                      enableSplit = false
+                  }
+                  density {
+                      enableSplit = false
+                  }
+                  abi {
+                      enableSplit = false
+                  }
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.11.0'
+              implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+              implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+              testImplementation 'junit:junit:4.13.2'
+              androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+              androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+          }
+          GRADLE_EOF
+          
+          # Replace placeholders with actual values
+          sed -i "s/__PACKAGE_NAME__/$PACKAGE_NAME/g" template/webviewCatatUang/app/build.gradle
+          sed -i "s/__KEYSTORE_PASSWORD__/$KEYSTORE_PASSWORD/g" template/webviewCatatUang/app/build.gradle
+          sed -i "s/__KEY_ALIAS__/$KEY_ALIAS/g" template/webviewCatatUang/app/build.gradle
+          sed -i "s/__KEY_PASSWORD__/$KEY_PASSWORD/g" template/webviewCatatUang/app/build.gradle
+          
+          echo "build.gradle replaced successfully"
+
+      - name: Replace AndroidManifest.xml
+        run: |
+          cat > template/webviewCatatUang/app/src/main/AndroidManifest.xml << 'MANIFEST_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:tools="http://schemas.android.com/tools">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+              <application
+                  android:allowBackup="true"
+                  android:dataExtractionRules="@xml/data_extraction_rules"
+                  android:fullBackupContent="@xml/backup_rules"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="@string/app_name"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.WebViewApp"
+                  android:usesCleartextTraffic="true"
+                  tools:targetApi="34">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:theme="@style/Theme.WebViewApp.NoActionBar"
+                      android:screenOrientation="portrait"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+              </application>
+
+          </manifest>
+          MANIFEST_EOF
+          echo "AndroidManifest.xml replaced successfully"
+
+
+      - name: Replace settings.gradle
+        run: |
+          # Extract app name for project, sanitize for Gradle
+          SANITIZED_NAME=$(echo "$APP_NAME" | tr -cd '[:alnum:]')
+          cat > template/webviewCatatUang/settings.gradle << EOF
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "${SANITIZED_NAME}"
+          include ':app'
+          EOF
+          echo "settings.gradle replaced successfully"
+
+      - name: Update theme references
+        run: |
+          # Update themes.xml to use generic theme name
+          cat > template/webviewCatatUang/app/src/main/res/values/themes.xml << 'THEME_EOF'
+          <resources xmlns:tools="http://schemas.android.com/tools">
+              <style name="Theme.WebViewApp" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+                  <item name="colorPrimary">@color/purple_500</item>
+                  <item name="colorPrimaryVariant">@color/purple_700</item>
+                  <item name="colorOnPrimary">@color/white</item>
+                  <item name="colorSecondary">@color/teal_200</item>
+                  <item name="colorSecondaryVariant">@color/teal_700</item>
+                  <item name="colorOnSecondary">@color/black</item>
+                  <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+              </style>
+
+              <style name="Theme.WebViewApp.NoActionBar">
+                  <item name="windowActionBar">false</item>
+                  <item name="windowNoTitle">true</item>
+              </style>
+          </resources>
+          THEME_EOF
+          echo "themes.xml updated successfully"
+
+      - name: Update colors.xml
+        run: |
+          cat > template/webviewCatatUang/app/src/main/res/values/colors.xml << 'COLORS_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="purple_200">#FFBB86FC</color>
+              <color name="purple_500">#FF6200EE</color>
+              <color name="purple_700">#FF3700B3</color>
+              <color name="teal_200">#FF03DAC5</color>
+              <color name="teal_700">#FF018786</color>
+              <color name="black">#FF000000</color>
+              <color name="white">#FFFFFFFF</color>
+          </resources>
+          COLORS_EOF
+          echo "colors.xml updated successfully"
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > template/webviewCatatUang/app/release-keystore.jks
+          echo "Keystore decoded successfully"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x template/webviewCatatUang/gradlew
+
+      - name: Build Release APK
+        working-directory: template/webviewCatatUang
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          echo "APK built successfully"
+
+      - name: Find APK file
+        id: find_apk
+        run: |
+          APK_PATH=$(find template/webviewCatatUang/app/build/outputs/apk/release -name "*.apk" | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: APK file not found"
+            exit 1
+          fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK at: $APK_PATH"
+
+      - name: Upload APK to R2
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          # Install AWS CLI for S3-compatible upload
+          pip install awscli
+          
+          # Configure AWS CLI for R2
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+          
+          # Upload APK to R2
+          APK_KEY="apks/${GENERATE_ID}.apk"
+          aws s3 cp "${{ steps.find_apk.outputs.apk_path }}" "s3://${R2_BUCKET}/${APK_KEY}" \
+            --endpoint-url "$R2_ENDPOINT"
+          
+          echo "APK uploaded to R2 with key: $APK_KEY"
+          echo "apk_key=$APK_KEY" >> $GITHUB_ENV
+
+      - name: Call success callback
+        if: success()
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          curl -X POST "$CALLBACK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            -d "{
+              \"generate_id\": \"$GENERATE_ID\",
+              \"status\": \"success\",
+              \"apk_key\": \"$apk_key\"
+            }"
+          echo "Success callback sent"
+
+      - name: Call failure callback
+        if: failure()
+        env:
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          curl -X POST "$CALLBACK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+            -d "{
+              \"generate_id\": \"$GENERATE_ID\",
+              \"status\": \"failed\",
+              \"error_message\": \"APK build failed. Check GitHub Actions logs for details.\"
+            }"
+          echo "Failure callback sent"

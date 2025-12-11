@@ -1,0 +1,76 @@
+name = "web2apk-api"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ============================================
+# D1 Database binding
+# Requirements: 10.1, 10.2, 10.3
+# ============================================
+[[d1_databases]]
+binding = "DB"
+database_name = "web2apk-db"
+database_id = "4562d0a5-9260-47fb-9b16-c3e24985434f"
+migrations_dir = "migrations"
+
+# ============================================
+# R2 Storage binding for icons and APKs
+# Requirements: 10.4, 10.5
+# ============================================
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "web2apk-storage"
+
+# ============================================
+# Development environment variables
+# ============================================
+[vars]
+ENVIRONMENT = "development"
+
+# ============================================
+# Secrets (set via wrangler secret put)
+# These should NOT be committed to version control
+# ============================================
+# JWT_SECRET - Secret key for JWT token signing
+# ADMIN_EMAIL - Default admin account email
+# ADMIN_PASSWORD - Default admin account password
+# GITHUB_TOKEN - GitHub PAT for triggering Actions
+# WEBHOOK_SECRET - Secret for build callback verification
+
+# ============================================
+# Production environment
+# ============================================
+[env.production]
+name = "web2apk-api"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "web2apk-db-prod"
+database_id = "YOUR_PRODUCTION_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[env.production.r2_buckets]]
+binding = "STORAGE"
+bucket_name = "web2apk-storage-prod"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+# ============================================
+# Staging environment (optional)
+# ============================================
+[env.staging]
+name = "web2apk-api-staging"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "web2apk-db-staging"
+database_id = "YOUR_STAGING_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[env.staging.r2_buckets]]
+binding = "STORAGE"
+bucket_name = "web2apk-storage-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
