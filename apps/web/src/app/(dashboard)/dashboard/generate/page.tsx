@@ -153,8 +153,7 @@ export default function GenerateFormPage() {
         formData.append('icon', iconFile);
       }
 
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787';
-      const response = await fetch(`${API_BASE_URL}/api/generate`, {
+      const response = await fetch('https://web2apk-api.threadsauto.workers.dev/api/generate', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
