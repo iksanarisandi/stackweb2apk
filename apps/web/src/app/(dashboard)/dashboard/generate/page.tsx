@@ -7,18 +7,12 @@ import { generateWhatsAppUrl } from '@web2apk/shared';
 import PaymentModal from './PaymentModal';
 
 interface GenerateResponse {
+  id: string;
+  status: string;
   message: string;
-  generate: {
-    id: string;
-    url: string;
-    app_name: string;
-    package_name: string;
-    status: string;
-  };
   payment: {
     id: string;
     amount: number;
-    status: string;
   };
 }
 
@@ -193,7 +187,7 @@ export default function GenerateFormPage() {
     const user = getUser();
     const waUrl = generateWhatsAppUrl({
       email: user?.email || '',
-      generateId: generateResult.generate.id,
+      generateId: generateResult.id,
       amount: generateResult.payment.amount,
     });
 
@@ -402,7 +396,7 @@ export default function GenerateFormPage() {
       {/* Payment Modal */}
       {showPaymentModal && generateResult && (
         <PaymentModal
-          generateId={generateResult.generate.id}
+          generateId={generateResult.id}
           amount={generateResult.payment.amount}
           onWhatsAppConfirm={handleWhatsAppConfirm}
           onClose={handleClosePaymentModal}
