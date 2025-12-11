@@ -36,11 +36,11 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 // Global error handling middleware
 app.use('*', errorHandler);
 
-// CORS middleware - allow all origins for API access
+// CORS middleware - allow specific origins for API access
 app.use(
   '*',
   cors({
-    origin: '*',
+    origin: ['https://web2apk-web.pages.dev', 'http://localhost:3000'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['Content-Length'],
