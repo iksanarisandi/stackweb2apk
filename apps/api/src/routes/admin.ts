@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { authMiddleware, adminMiddleware } from '../middleware';
+import { authMiddleware, adminMiddleware, adminRateLimit } from '../middleware';
 import type { Env, Variables } from '../index';
 
 const admin = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-// Apply auth and admin middleware to all admin routes
+// Apply auth, admin, and rate limit middleware to all admin routes
 admin.use('*', authMiddleware);
 admin.use('*', adminMiddleware);
+admin.use('*', adminRateLimit);
 
 /**
  * GET /api/admin/payments

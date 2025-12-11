@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { errorHandler } from './middleware';
+import { errorHandler, securityHeaders, generalRateLimit, iconRateLimit } from './middleware';
 import { authRoutes, generateRoutes, adminRoutes, webhookRoutes } from './routes';
 import { seedAdmin } from './lib/seed-admin';
 
@@ -35,6 +35,12 @@ const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // Global error handling middleware
 app.use('*', errorHandler);
+
+// Security headers middleware
+app.use('*', securityHeaders);
+
+// General rate limiting (100 req/min)
+app.use('*', generalRateLimit);
 
 // CORS middleware - allow specific origins for API access
 app.use(
@@ -79,7 +85,8 @@ app.route('/api/generate', generateRoutes);
 
 // Public icon endpoint for GitHub Actions to download during APK build
 // No auth required - accessed by GitHub Actions workflow
-app.get('/api/icon/:generateId', async (c) => {
+// Rate limited to prevent abuse
+app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
   const generateId = c.req.param('generateId');
 
   if (!generateId) {

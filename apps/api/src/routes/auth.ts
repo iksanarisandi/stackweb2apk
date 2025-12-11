@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { registerSchema, loginSchema } from '@web2apk/shared';
 import { hashPassword, verifyPassword, generateJWT, generateId } from '../lib/auth';
-import { authMiddleware } from '../middleware';
+import { authMiddleware, authRateLimit, registrationRateLimit } from '../middleware';
 import type { Env, Variables } from '../index';
 import type { ZodIssue } from 'zod';
 
@@ -11,9 +11,10 @@ const auth = new Hono<{ Bindings: Env; Variables: Variables }>();
 /**
  * POST /api/auth/register
  * Register a new user account
+ * Rate limited: 3 registrations per hour per IP
  * Validates: Requirements 1.1, 1.2, 1.3, 1.4
  */
-auth.post('/register', async (c) => {
+auth.post('/register', registrationRateLimit, async (c) => {
   // Parse and validate request body
   const body = await c.req.json();
   const result = registerSchema.safeParse(body);
@@ -81,9 +82,10 @@ auth.post('/register', async (c) => {
 /**
  * POST /api/auth/login
  * Authenticate user and return JWT token
+ * Rate limited: 10 attempts per 15 minutes (brute force protection)
  * Validates: Requirements 2.1, 2.2
  */
-auth.post('/login', async (c) => {
+auth.post('/login', authRateLimit, async (c) => {
   // Parse and validate request body
   const body = await c.req.json();
   const result = loginSchema.safeParse(body);
