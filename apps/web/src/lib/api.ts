@@ -37,7 +37,6 @@ export async function apiRequest<T>(
         ...defaultHeaders,
         ...options.headers,
       },
-      credentials: 'include', // Include cookies for auth
     });
 
     const data = await response.json();
