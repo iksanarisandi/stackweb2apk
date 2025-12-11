@@ -4,35 +4,47 @@ import { verifyJWT } from '../lib/auth';
 import type { Env, Variables } from '../index';
 
 /**
+ * Parse cookies from Cookie header
+ */
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader) return {};
+  
+  const cookies: Record<string, string> = {};
+  cookieHeader.split(';').forEach(cookie => {
+    const [name, ...rest] = cookie.trim().split('=');
+    if (name && rest.length > 0) {
+      cookies[name] = rest.join('=');
+    }
+  });
+  return cookies;
+}
+
+/**
  * Auth middleware for protected routes
- * Verifies JWT token and attaches user info to context
+ * Verifies JWT token from Authorization header OR httpOnly cookie
  * Validates: Requirements 2.3, 2.4
  */
 export const authMiddleware = createMiddleware<{
   Bindings: Env;
   Variables: Variables;
 }>(async (c, next) => {
-  // Get Authorization header
+  let token: string | null = null;
+
+  // Try Authorization header first
   const authHeader = c.req.header('Authorization');
-
-  if (!authHeader) {
-    throw new HTTPException(401, {
-      message: 'Authorization header is required',
-    });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7);
   }
 
-  // Check Bearer token format
-  if (!authHeader.startsWith('Bearer ')) {
-    throw new HTTPException(401, {
-      message: 'Invalid authorization format. Use: Bearer <token>',
-    });
+  // Fallback to httpOnly cookie if no header
+  if (!token) {
+    const cookies = parseCookies(c.req.header('Cookie'));
+    token = cookies['web2apk_token'] || null;
   }
-
-  const token = authHeader.slice(7); // Remove 'Bearer ' prefix
 
   if (!token) {
     throw new HTTPException(401, {
-      message: 'Token is required',
+      message: 'Authentication required',
     });
   }
 

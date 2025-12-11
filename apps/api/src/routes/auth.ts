@@ -144,16 +144,46 @@ auth.post('/login', authRateLimit, async (c) => {
     24 // 24 hours
   );
 
-  // Return token to client
-  return c.json({
+  // Set httpOnly cookie for secure token storage (XSS protection)
+  const isProduction = c.req.url.includes('workers.dev') || c.req.url.includes('pages.dev');
+  
+  // Create response with cookie
+  const response = c.json({
     message: 'Login successful',
-    token,
+    token, // Still return token for backward compatibility
     user: {
       id: user.id,
       email: user.email,
       role: user.role,
     },
   });
+
+  // Set secure httpOnly cookie
+  response.headers.set(
+    'Set-Cookie',
+    `web2apk_token=${token}; HttpOnly; ${isProduction ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=${24 * 60 * 60}`
+  );
+
+  return response;
+});
+
+/**
+ * POST /api/auth/logout
+ * Clear authentication cookie
+ * Validates: Requirements 2.5
+ */
+auth.post('/logout', (c) => {
+  const isProduction = c.req.url.includes('workers.dev') || c.req.url.includes('pages.dev');
+  
+  const response = c.json({ message: 'Logged out successfully' });
+  
+  // Clear the cookie by setting it to expire immediately
+  response.headers.set(
+    'Set-Cookie',
+    `web2apk_token=; HttpOnly; ${isProduction ? 'Secure; ' : ''}SameSite=Strict; Path=/; Max-Age=0`
+  );
+
+  return response;
 });
 
 /**

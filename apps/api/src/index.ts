@@ -66,8 +66,16 @@ app.get('/api/health', (c) => {
 });
 
 // Admin seeding endpoint - seeds admin user on first run
+// SECURED: Requires ADMIN_PASSWORD as X-Init-Secret header
 // Requirement 9.3: Create default admin account from environment variables if not exists
-app.get('/api/init', async (c) => {
+app.post('/api/init', async (c) => {
+  // Verify init secret (use ADMIN_PASSWORD as the secret)
+  const initSecret = c.req.header('X-Init-Secret');
+  
+  if (!initSecret || initSecret !== c.env.ADMIN_PASSWORD) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
   const result = await seedAdmin({
     db: c.env.DB,
     adminEmail: c.env.ADMIN_EMAIL,
