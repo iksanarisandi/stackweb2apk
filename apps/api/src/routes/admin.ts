@@ -122,9 +122,10 @@ admin.post('/payments/:id/confirm', async (c) => {
     .bind(payment.generate_id)
     .run();
 
-  // Generate presigned URL for icon (for GitHub Actions to download)
-  // Note: R2 presigned URLs require additional setup, using direct key for now
-  const iconUrl = `https://${c.env.STORAGE}.r2.cloudflarestorage.com/${payment.icon_key}`;
+  // Generate API URL for icon download (GitHub Actions will use this)
+  // Using public icon endpoint (no auth required)
+  const baseUrl = new URL(c.req.url).origin;
+  const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
 
   // Trigger GitHub Actions workflow via repository dispatch (Requirement 5.4)
   // The callback URL will be called by GitHub Actions when build completes
@@ -132,7 +133,7 @@ admin.post('/payments/:id/confirm', async (c) => {
 
   try {
     const githubResponse = await fetch(
-      'https://api.github.com/repos/AcidOP/web2apk-builder/dispatches',
+      'https://api.github.com/repos/iksanarisandi/stackweb2apk/dispatches',
       {
         method: 'POST',
         headers: {

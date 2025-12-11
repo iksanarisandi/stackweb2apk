@@ -77,6 +77,42 @@ app.route('/api/auth', authRoutes);
 // Mount generate routes
 app.route('/api/generate', generateRoutes);
 
+// Public icon endpoint for GitHub Actions to download during APK build
+// No auth required - accessed by GitHub Actions workflow
+app.get('/api/icon/:generateId', async (c) => {
+  const generateId = c.req.param('generateId');
+
+  if (!generateId) {
+    return c.json({ error: 'Generate ID is required' }, 400);
+  }
+
+  // Get the generate record to find the icon key
+  const result = await c.env.DB.prepare(
+    `SELECT icon_key FROM generates WHERE id = ?`
+  )
+    .bind(generateId)
+    .first<{ icon_key: string | null }>();
+
+  if (!result || !result.icon_key) {
+    return c.json({ error: 'Icon not found' }, 404);
+  }
+
+  // Fetch icon from R2
+  const iconObject = await c.env.STORAGE.get(result.icon_key);
+  if (!iconObject) {
+    return c.json({ error: 'Icon file not found in storage' }, 404);
+  }
+
+  // Return the icon file
+  return new Response(iconObject.body, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Content-Length': iconObject.size.toString(),
+      'Cache-Control': 'public, max-age=86400',
+    },
+  });
+});
+
 // Mount admin routes
 app.route('/api/admin', adminRoutes);
 
