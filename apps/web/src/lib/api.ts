@@ -52,7 +52,7 @@ export async function apiRequest<T>(
     }
 
     return { data };
-  } catch (error) {
+  } catch {
     return {
       error: {
         error: 'NETWORK_ERROR',

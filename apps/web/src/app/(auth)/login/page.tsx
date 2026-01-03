@@ -18,7 +18,7 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { token: turnstileToken, isVerified, handleVerify, handleError, handleExpire } = useTurnstile();
+  const { token: turnstileToken, handleVerify, handleError, handleExpire } = useTurnstile();
 
   // Check for success message from registration redirect (Requirement 1.5)
   const registered = searchParams.get('registered');

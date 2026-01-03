@@ -63,7 +63,7 @@ export function Turnstile({
         if (widgetIdRef.current) {
             try {
                 window.turnstile.remove(widgetIdRef.current);
-            } catch (e) {
+            } catch {
                 // Widget may already be removed
             }
         }
@@ -126,7 +126,7 @@ export function Turnstile({
             if (widgetIdRef.current && window.turnstile) {
                 try {
                     window.turnstile.remove(widgetIdRef.current);
-                } catch (e) {
+                } catch {
                     // Ignore cleanup errors
                 }
             }
