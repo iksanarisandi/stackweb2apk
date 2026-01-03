@@ -26,6 +26,7 @@ bucket_name = "web2apk-storage"
 # ============================================
 [vars]
 ENVIRONMENT = "development"
+ALLOWED_ORIGINS = "https://2apk.de"
 
 # ============================================
 # Secrets (set via wrangler secret put)
@@ -55,6 +56,7 @@ bucket_name = "web2apk-storage-prod"
 
 [env.production.vars]
 ENVIRONMENT = "production"
+ALLOWED_ORIGINS = "https://2apk.de"
 
 # ============================================
 # Staging environment (optional)

@@ -21,6 +21,8 @@ export interface Env {
   GITHUB_TOKEN: string;
   // Webhook secret for build callbacks
   WEBHOOK_SECRET: string;
+  // Allowed CORS origins (comma-separated), e.g. "https://2apk.de,https://example.com"
+  ALLOWED_ORIGINS?: string;
 }
 
 /**
@@ -43,17 +45,37 @@ app.use('*', securityHeaders);
 app.use('*', generalRateLimit);
 
 // CORS middleware - allow specific origins for API access
-app.use(
-  '*',
-  cors({
-    origin: ['https://web2apk-web.pages.dev', 'http://localhost:3000'],
+// Supports dynamic origins via ALLOWED_ORIGINS environment variable
+app.use('*', async (c, next) => {
+  // Default origins that are always allowed
+  const defaultOrigins = ['https://web2apk-web.pages.dev', 'http://localhost:3000'];
+
+  // Parse additional origins from environment variable (comma-separated)
+  const envOrigins = c.env.ALLOWED_ORIGINS
+    ? c.env.ALLOWED_ORIGINS.split(',').map((o: string) => o.trim()).filter(Boolean)
+    : [];
+
+  // Combine all allowed origins (deduplicated)
+  const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
+
+  // Apply CORS with dynamic origins
+  const corsMiddleware = cors({
+    origin: (origin) => {
+      // If no origin (same-origin request) or origin is in allowed list
+      if (!origin || allowedOrigins.includes(origin)) {
+        return origin || allowedOrigins[0];
+      }
+      return null; // Block other origins
+    },
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['Content-Length'],
     maxAge: 86400,
     credentials: true,
-  })
-);
+  });
+
+  return corsMiddleware(c, next);
+});
 
 // Health check endpoint
 app.get('/', (c) => {
@@ -71,7 +93,7 @@ app.get('/api/health', (c) => {
 app.post('/api/init', async (c) => {
   // Verify init secret (use ADMIN_PASSWORD as the secret)
   const initSecret = c.req.header('X-Init-Secret');
-  
+
   if (!initSecret || initSecret !== c.env.ADMIN_PASSWORD) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
