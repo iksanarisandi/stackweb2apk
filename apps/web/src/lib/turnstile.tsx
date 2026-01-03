@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 // Cloudflare Turnstile Site Key
 const TURNSTILE_SITE_KEY = '0x4AAAAAACKWi3_z-19LNbAc';
@@ -35,15 +35,13 @@ interface TurnstileProps {
     size?: 'normal' | 'compact';
 }
 
+// Track if script is being loaded globally
+let scriptLoading = false;
+let scriptLoaded = false;
+
 /**
  * Cloudflare Turnstile CAPTCHA Component
- * 
- * Usage:
- * ```tsx
- * const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
- * 
- * <Turnstile onVerify={setTurnstileToken} />
- * ```
+ * Fixed version that prevents re-rendering issues
  */
 export function Turnstile({
     onVerify,
@@ -54,97 +52,132 @@ export function Turnstile({
 }: TurnstileProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const widgetIdRef = useRef<string | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+    const mountedRef = useRef(true);
+    const renderedRef = useRef(false);
+
+    // Store callbacks in refs to avoid re-renders
+    const onVerifyRef = useRef(onVerify);
+    const onErrorRef = useRef(onError);
+    const onExpireRef = useRef(onExpire);
+
+    // Update refs when callbacks change
+    useEffect(() => {
+        onVerifyRef.current = onVerify;
+        onErrorRef.current = onError;
+        onExpireRef.current = onExpire;
+    }, [onVerify, onError, onExpire]);
 
     const renderWidget = useCallback(() => {
-        if (!containerRef.current || !window.turnstile) return;
-
-        // Remove existing widget if any
-        if (widgetIdRef.current) {
-            try {
-                window.turnstile.remove(widgetIdRef.current);
-            } catch {
-                // Widget may already be removed
-            }
+        // Prevent multiple renders
+        if (!containerRef.current || !window.turnstile || !mountedRef.current || renderedRef.current) {
+            return;
         }
 
-        // Clear container
-        containerRef.current.innerHTML = '';
+        // Mark as rendered to prevent duplicate renders
+        renderedRef.current = true;
 
-        // Render new widget
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
-            sitekey: TURNSTILE_SITE_KEY,
-            callback: (token: string) => {
-                setIsLoading(false);
-                onVerify(token);
-            },
-            'error-callback': () => {
-                setIsLoading(false);
-                onError?.();
-            },
-            'expired-callback': () => {
-                onExpire?.();
-                // Reset the widget when token expires
-                if (widgetIdRef.current && window.turnstile) {
-                    window.turnstile.reset(widgetIdRef.current);
-                }
-            },
-            theme,
-            size,
-        });
-
-        setIsLoading(false);
-    }, [onVerify, onError, onExpire, theme, size]);
+        // Render widget
+        try {
+            widgetIdRef.current = window.turnstile.render(containerRef.current, {
+                sitekey: TURNSTILE_SITE_KEY,
+                callback: (token: string) => {
+                    if (mountedRef.current) {
+                        onVerifyRef.current(token);
+                    }
+                },
+                'error-callback': () => {
+                    if (mountedRef.current) {
+                        onErrorRef.current?.();
+                    }
+                },
+                'expired-callback': () => {
+                    if (mountedRef.current) {
+                        onExpireRef.current?.();
+                        // Reset the widget when token expires
+                        if (widgetIdRef.current && window.turnstile) {
+                            window.turnstile.reset(widgetIdRef.current);
+                        }
+                    }
+                },
+                theme,
+                size,
+            });
+        } catch {
+            // Widget render failed, allow retry
+            renderedRef.current = false;
+        }
+    }, [theme, size]); // Only depend on static props
 
     useEffect(() => {
-        // Check if turnstile script is already loaded
-        if (window.turnstile) {
+        mountedRef.current = true;
+        renderedRef.current = false;
+
+        // If turnstile is already loaded, render immediately
+        if (scriptLoaded && window.turnstile) {
             renderWidget();
             return;
         }
 
-        // Check if script is already in DOM
-        const existingScript = document.querySelector('script[src*="turnstile"]');
+        // If script is being loaded, wait for it
+        if (scriptLoading) {
+            const originalCallback = window.onTurnstileLoad;
+            window.onTurnstileLoad = () => {
+                originalCallback?.();
+                scriptLoaded = true;
+                renderWidget();
+            };
+            return;
+        }
+
+        // Check if script already exists in DOM
+        const existingScript = document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]');
         if (existingScript) {
-            // Wait for it to load
-            window.onTurnstileLoad = renderWidget;
+            // Script exists, wait for it or it's already loaded
+            if (window.turnstile) {
+                scriptLoaded = true;
+                renderWidget();
+            } else {
+                window.onTurnstileLoad = () => {
+                    scriptLoaded = true;
+                    renderWidget();
+                };
+            }
             return;
         }
 
         // Load Turnstile script
+        scriptLoading = true;
         const script = document.createElement('script');
         script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad';
         script.async = true;
         script.defer = true;
 
-        window.onTurnstileLoad = renderWidget;
+        window.onTurnstileLoad = () => {
+            scriptLoaded = true;
+            scriptLoading = false;
+            renderWidget();
+        };
 
         document.head.appendChild(script);
 
         return () => {
-            // Cleanup widget on unmount
+            // Cleanup on unmount
+            mountedRef.current = false;
             if (widgetIdRef.current && window.turnstile) {
                 try {
                     window.turnstile.remove(widgetIdRef.current);
                 } catch {
                     // Ignore cleanup errors
                 }
+                widgetIdRef.current = null;
             }
+            renderedRef.current = false;
         };
     }, [renderWidget]);
 
     return (
         <div className="flex justify-center my-4">
             <div ref={containerRef} />
-            {isLoading && (
-                <div className="flex items-center justify-center p-4 text-gray-500 text-sm">
-                    <svg className="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Memuat verifikasi...
-                </div>
-            )}
         </div>
     );
 }
@@ -156,24 +189,24 @@ export function useTurnstile() {
     const [token, setToken] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const handleVerify = (newToken: string) => {
+    const handleVerify = useCallback((newToken: string) => {
         setToken(newToken);
         setError(null);
-    };
+    }, []);
 
-    const handleError = () => {
+    const handleError = useCallback(() => {
         setToken(null);
         setError('Verifikasi gagal. Silakan coba lagi.');
-    };
+    }, []);
 
-    const handleExpire = () => {
+    const handleExpire = useCallback(() => {
         setToken(null);
-    };
+    }, []);
 
-    const reset = () => {
+    const reset = useCallback(() => {
         setToken(null);
         setError(null);
-    };
+    }, []);
 
     return {
         token,
