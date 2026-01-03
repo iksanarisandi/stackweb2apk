@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { generateRequestSchema } from '@web2apk/shared';
 import { generateId } from '../lib/auth';
-import { authMiddleware, generateRateLimit, sanitizeUrl, validatePackageName, validateAppName } from '../middleware';
+import { authMiddleware, generateRateLimit, sanitizeUrl, validatePackageName, validateAppName, turnstileMiddleware, downloadRateLimit } from '../middleware';
 import type { Env, Variables } from '../index';
 import type { ZodIssue } from 'zod';
 
@@ -71,8 +71,9 @@ async function validatePngIcon(
  * Create a new APK generation request
  * Rate limited: 1 per hour per user
  * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.3
+ * Turnstile protected: Yes
  */
-generate.post('/', authMiddleware, generateRateLimit, async (c) => {
+generate.post('/', authMiddleware, generateRateLimit, turnstileMiddleware(), async (c) => {
   const userId = c.get('userId');
 
   if (!userId) {
@@ -320,7 +321,7 @@ async function generateDownloadToken(
 ): Promise<string> {
   const encoder = new TextEncoder();
   const data = `${apkKey}:${expiresAt}`;
-  
+
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(secret),
@@ -328,11 +329,11 @@ async function generateDownloadToken(
     false,
     ['sign']
   );
-  
+
   const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
   const signatureArray = Array.from(new Uint8Array(signature));
   const signatureHex = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  
+
   return signatureHex;
 }
 
@@ -353,8 +354,9 @@ async function verifyDownloadToken(
  * GET /api/generate/:id/download
  * Generate presigned R2 URL for APK download and increment download count
  * Validates: Requirements 6.5, 7.1, 7.2, 7.4
+ * Rate limited: 10 downloads per minute per user
  */
-generate.get('/:id/download', authMiddleware, async (c) => {
+generate.get('/:id/download', authMiddleware, downloadRateLimit, async (c) => {
   const userId = c.get('userId');
   const generateId = c.req.param('id');
 
@@ -418,10 +420,10 @@ generate.get('/:id/download', authMiddleware, async (c) => {
 
   // Generate expiry timestamp (7 days from now) - Requirement 6.5
   const expiresAt = Math.floor(Date.now() / 1000) + DOWNLOAD_URL_EXPIRY_SECONDS;
-  
+
   // Generate signed download token
   const token = await generateDownloadToken(result.apk_key, expiresAt, c.env.JWT_SECRET);
-  
+
   // Create download URL with signed parameters
   const baseUrl = new URL(c.req.url).origin;
   const downloadUrl = `${baseUrl}/api/generate/${generateId}/file?expires=${expiresAt}&token=${token}`;
@@ -457,7 +459,7 @@ generate.get('/:id/file', async (c) => {
   }
 
   const expiresAt = parseInt(expiresParam, 10);
-  
+
   // Check if link has expired
   if (isNaN(expiresAt) || Date.now() / 1000 > expiresAt) {
     return c.json(

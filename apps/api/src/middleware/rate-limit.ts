@@ -58,11 +58,11 @@ export function rateLimiter(config: RateLimitConfig) {
     next: Next
   ) => {
     // Get client identifier (IP or user ID)
-    const clientIp = c.req.header('cf-connecting-ip') || 
-                     c.req.header('x-forwarded-for')?.split(',')[0] || 
-                     'unknown';
+    const clientIp = c.req.header('cf-connecting-ip') ||
+      c.req.header('x-forwarded-for')?.split(',')[0] ||
+      'unknown';
     const userId = c.get('userId');
-    
+
     // Use user ID if authenticated, otherwise IP
     const identifier = userId || clientIp;
     const key = `${config.keyPrefix}:${identifier}`;
@@ -142,4 +142,18 @@ export const adminRateLimit = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
   maxRequests: 50,
   keyPrefix: 'rl:admin',
+});
+
+// Webhook rate limit: 20 requests per minute (from GitHub Actions)
+export const webhookRateLimit = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 20,
+  keyPrefix: 'rl:webhook',
+});
+
+// Download rate limit: 10 downloads per minute per user
+export const downloadRateLimit = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 10,
+  keyPrefix: 'rl:download',
 });

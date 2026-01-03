@@ -3,7 +3,7 @@
 import { useState, FormEvent, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiRequest } from '@/lib';
+import { apiRequest, Turnstile, useTurnstile } from '@/lib';
 
 interface RegisterResponse {
   message: string;
@@ -28,6 +28,7 @@ function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const { token: turnstileToken, handleVerify, handleError, handleExpire } = useTurnstile();
 
   // Check for success message from redirect
   const success = searchParams.get('success');
@@ -66,13 +67,18 @@ function RegisterForm() {
       return;
     }
 
+    if (!turnstileToken) {
+      setError('Silakan selesaikan verifikasi CAPTCHA');
+      return;
+    }
+
     setIsLoading(true);
 
     const { data, error: apiError } = await apiRequest<RegisterResponse>(
       '/api/auth/register',
       {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, turnstile_token: turnstileToken }),
       }
     );
 
@@ -230,6 +236,13 @@ function RegisterForm() {
             )}
           </div>
         </div>
+
+        {/* Turnstile CAPTCHA */}
+        <Turnstile
+          onVerify={handleVerify}
+          onError={handleError}
+          onExpire={handleExpire}
+        />
 
         <div>
           <button

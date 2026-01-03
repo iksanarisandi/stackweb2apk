@@ -2,7 +2,7 @@
 
 import { useState, useRef, FormEvent, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { getToken, getUser } from '@/lib';
+import { getToken, getUser, Turnstile, useTurnstile } from '@/lib';
 import { generateWhatsAppUrl } from '@web2apk/shared';
 import PaymentModal from './PaymentModal';
 
@@ -38,6 +38,9 @@ export default function GenerateFormPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  // Turnstile state
+  const { token: turnstileToken, handleVerify, handleError: handleTurnstileError, handleExpire } = useTurnstile();
 
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -129,6 +132,11 @@ export default function GenerateFormPage() {
       return;
     }
 
+    if (!turnstileToken) {
+      setError('Silakan selesaikan verifikasi CAPTCHA');
+      return;
+    }
+
     const token = getToken();
     if (!token) {
       router.push('/login');
@@ -143,6 +151,7 @@ export default function GenerateFormPage() {
       formData.append('url', url);
       formData.append('app_name', appName);
       formData.append('package_name', packageName);
+      formData.append('turnstile_token', turnstileToken);
       if (iconFile) {
         formData.append('icon', iconFile);
       }
@@ -297,16 +306,15 @@ export default function GenerateFormPage() {
           <label className="label">
             Icon Aplikasi <span className="text-red-500">*</span>
           </label>
-          
+
           <div className="flex items-start gap-4">
             {/* Icon Preview */}
             <div
               onClick={() => fileInputRef.current?.click()}
-              className={`w-24 h-24 rounded-lg border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors ${
-                fieldErrors.icon
+              className={`w-24 h-24 rounded-lg border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors ${fieldErrors.icon
                   ? 'border-red-300 bg-red-50'
                   : 'border-gray-300 hover:border-blue-400 bg-gray-50'
-              }`}
+                }`}
             >
               {iconPreview ? (
                 <img
@@ -334,13 +342,13 @@ export default function GenerateFormPage() {
               >
                 {iconFile ? 'Ganti Icon' : 'Pilih Icon'}
               </button>
-              
+
               {iconFile && (
                 <p className="mt-2 text-sm text-gray-600">
                   {iconFile.name} ({(iconFile.size / 1024).toFixed(1)} KB)
                 </p>
               )}
-              
+
               {fieldErrors.icon ? (
                 <p className="mt-1 text-sm text-red-600">{fieldErrors.icon}</p>
               ) : (
@@ -366,6 +374,13 @@ export default function GenerateFormPage() {
             </div>
           </div>
         </div>
+
+        {/* Turnstile CAPTCHA */}
+        <Turnstile
+          onVerify={handleVerify}
+          onError={handleTurnstileError}
+          onExpire={handleExpire}
+        />
 
         {/* Submit Button */}
         <div className="flex justify-end gap-3">

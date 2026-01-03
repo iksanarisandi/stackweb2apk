@@ -23,6 +23,8 @@ export interface Env {
   WEBHOOK_SECRET: string;
   // Allowed CORS origins (comma-separated), e.g. "https://2apk.de,https://example.com"
   ALLOWED_ORIGINS?: string;
+  // Cloudflare Turnstile secret key for CAPTCHA verification
+  TURNSTILE_SECRET: string;
 }
 
 /**

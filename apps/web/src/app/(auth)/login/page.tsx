@@ -3,7 +3,7 @@
 import { useState, FormEvent, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { apiRequest, setAuth, User } from '@/lib';
+import { apiRequest, setAuth, User, Turnstile, useTurnstile } from '@/lib';
 
 interface LoginResponse {
   message: string;
@@ -18,6 +18,7 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const { token: turnstileToken, isVerified, handleVerify, handleError, handleExpire } = useTurnstile();
 
   // Check for success message from registration redirect (Requirement 1.5)
   const registered = searchParams.get('registered');
@@ -25,13 +26,19 @@ function LoginForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!turnstileToken) {
+      setError('Silakan selesaikan verifikasi CAPTCHA');
+      return;
+    }
+
     setIsLoading(true);
 
     const { data, error: apiError } = await apiRequest<LoginResponse>(
       '/api/auth/login',
       {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, turnstile_token: turnstileToken }),
       }
     );
 
@@ -137,6 +144,13 @@ function LoginForm() {
             />
           </div>
         </div>
+
+        {/* Turnstile CAPTCHA */}
+        <Turnstile
+          onVerify={handleVerify}
+          onError={handleError}
+          onExpire={handleExpire}
+        />
 
         <div>
           <button

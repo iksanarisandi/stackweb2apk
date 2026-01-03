@@ -2,19 +2,30 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { registerSchema, loginSchema } from '@web2apk/shared';
 import { hashPassword, verifyPassword, generateJWT, generateId } from '../lib/auth';
-import { authMiddleware, authRateLimit, registrationRateLimit } from '../middleware';
+import { authMiddleware, authRateLimit, registrationRateLimit, turnstileMiddleware } from '../middleware';
 import type { Env, Variables } from '../index';
 import type { ZodIssue } from 'zod';
 
 const auth = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 /**
+ * Check if the current environment is production
+ * Used for setting Secure cookie flag
+ */
+function isProductionEnv(url: string): boolean {
+  return url.includes('workers.dev') ||
+    url.includes('pages.dev') ||
+    url.includes('2apk.de');
+}
+
+/**
  * POST /api/auth/register
  * Register a new user account
  * Rate limited: 3 registrations per hour per IP
  * Validates: Requirements 1.1, 1.2, 1.3, 1.4
+ * Turnstile protected: Yes
  */
-auth.post('/register', registrationRateLimit, async (c) => {
+auth.post('/register', registrationRateLimit, turnstileMiddleware(), async (c) => {
   // Parse and validate request body
   const body = await c.req.json();
   const result = registerSchema.safeParse(body);
@@ -84,8 +95,9 @@ auth.post('/register', registrationRateLimit, async (c) => {
  * Authenticate user and return JWT token
  * Rate limited: 10 attempts per 15 minutes (brute force protection)
  * Validates: Requirements 2.1, 2.2
+ * Turnstile protected: Yes
  */
-auth.post('/login', authRateLimit, async (c) => {
+auth.post('/login', authRateLimit, turnstileMiddleware(), async (c) => {
   // Parse and validate request body
   const body = await c.req.json();
   const result = loginSchema.safeParse(body);
@@ -145,8 +157,8 @@ auth.post('/login', authRateLimit, async (c) => {
   );
 
   // Set httpOnly cookie for secure token storage (XSS protection)
-  const isProduction = c.req.url.includes('workers.dev') || c.req.url.includes('pages.dev');
-  
+  const isProduction = isProductionEnv(c.req.url);
+
   // Create response with cookie
   const response = c.json({
     message: 'Login successful',
@@ -173,10 +185,10 @@ auth.post('/login', authRateLimit, async (c) => {
  * Validates: Requirements 2.5
  */
 auth.post('/logout', (c) => {
-  const isProduction = c.req.url.includes('workers.dev') || c.req.url.includes('pages.dev');
-  
+  const isProduction = isProductionEnv(c.req.url);
+
   const response = c.json({ message: 'Logged out successfully' });
-  
+
   // Clear the cookie by setting it to expire immediately
   response.headers.set(
     'Set-Cookie',

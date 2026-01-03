@@ -37,6 +37,7 @@ ALLOWED_ORIGINS = "https://2apk.de"
 # ADMIN_PASSWORD - Default admin account password
 # GITHUB_TOKEN - GitHub PAT for triggering Actions
 # WEBHOOK_SECRET - Secret for build callback verification
+# TURNSTILE_SECRET - Cloudflare Turnstile secret key for CAPTCHA
 
 # ============================================
 # Production environment

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { webhookRateLimit } from '../middleware';
 import type { Env, Variables } from '../index';
 
 const webhook = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -24,11 +25,12 @@ interface BuildCallbackPayload {
  * 
  * Property 16: Build Callback Failure Handling
  * For any failed build callback with error message, the generate status SHALL change to "failed" and error_message SHALL be populated.
+ * Rate limited: 20 requests per minute
  */
-webhook.post('/build-complete', async (c) => {
+webhook.post('/build-complete', webhookRateLimit, async (c) => {
   // Verify webhook secret from header
   const webhookSecret = c.req.header('X-Webhook-Secret');
-  
+
   if (!webhookSecret || webhookSecret !== c.env.WEBHOOK_SECRET) {
     throw new HTTPException(401, {
       message: 'Invalid webhook secret',
