@@ -139,11 +139,25 @@ export const generateIpRateLimit = rateLimiter({
   keyPrefix: 'rl:generate:ip',
 });
 
-// Icon download rate limit: 30 per minute (prevent abuse)
+// Icon download rate limit: 10 per minute per IP (reduced to prevent enumeration)
 export const iconRateLimit = rateLimiter({
   windowMs: 60 * 1000, // 1 minute
-  maxRequests: 30,
+  maxRequests: 10,
   keyPrefix: 'rl:icon',
+});
+
+// Init endpoint rate limit: 3 per hour per IP (prevent brute force on secret)
+export const initRateLimit = rateLimiter({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 3,
+  keyPrefix: 'rl:init',
+});
+
+// Health check rate limit: 30 per minute per IP (prevent spam)
+export const healthRateLimit = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  maxRequests: 30,
+  keyPrefix: 'rl:health',
 });
 
 // Admin rate limit: 50 requests per minute

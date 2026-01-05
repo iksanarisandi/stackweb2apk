@@ -182,9 +182,10 @@ auth.post('/login', authRateLimit, turnstileMiddleware(), async (c) => {
 /**
  * POST /api/auth/logout
  * Clear authentication cookie
+ * Requires authentication to prevent spam
  * Validates: Requirements 2.5
  */
-auth.post('/logout', (c) => {
+auth.post('/logout', authMiddleware, (c) => {
   const isProduction = isProductionEnv(c.req.url);
 
   const response = c.json({ message: 'Logged out successfully' });

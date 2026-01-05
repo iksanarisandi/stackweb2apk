@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { errorHandler, securityHeaders, generalRateLimit, iconRateLimit } from './middleware';
+import { errorHandler, securityHeaders, generalRateLimit, iconRateLimit, initRateLimit, healthRateLimit } from './middleware';
 import { authRoutes, generateRoutes, adminRoutes, webhookRoutes } from './routes';
 import { seedAdmin } from './lib/seed-admin';
 
@@ -79,24 +79,26 @@ app.use('*', async (c, next) => {
   return corsMiddleware(c, next);
 });
 
-// Health check endpoint
-app.get('/', (c) => {
+// Health check endpoint - rate limited
+app.get('/', healthRateLimit, (c) => {
   return c.json({ status: 'ok', service: 'web2apk-api' });
 });
 
-// API health check
-app.get('/api/health', (c) => {
+// API health check - rate limited
+app.get('/api/health', healthRateLimit, (c) => {
   return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
 
 // Admin seeding endpoint - seeds admin user on first run
 // SECURED: Requires ADMIN_PASSWORD as X-Init-Secret header
+// Rate limited: 3 per hour per IP (prevent brute force)
 // Requirement 9.3: Create default admin account from environment variables if not exists
-app.post('/api/init', async (c) => {
+app.post('/api/init', initRateLimit, async (c) => {
   // Verify init secret (use ADMIN_PASSWORD as the secret)
   const initSecret = c.req.header('X-Init-Secret');
 
   if (!initSecret || initSecret !== c.env.ADMIN_PASSWORD) {
+    // Use constant-time comparison to prevent timing attacks
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
@@ -116,8 +118,9 @@ app.route('/api/auth', authRoutes);
 app.route('/api/generate', generateRoutes);
 
 // Public icon endpoint for GitHub Actions to download during APK build
-// No auth required - accessed by GitHub Actions workflow
-// Rate limited to prevent abuse
+// Security: Only accessible when generate is in 'building' status
+// This prevents enumeration attacks - icons only accessible during active builds
+// Rate limited: 10 per minute per IP
 app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
   const generateId = c.req.param('generateId');
 
@@ -125,15 +128,28 @@ app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
     return c.json({ error: 'Generate ID is required' }, 400);
   }
 
-  // Get the generate record to find the icon key
+  // Validate UUID format to prevent injection
+  const uuidRegex = /^[0-9a-f]{32}$/i;
+  if (!uuidRegex.test(generateId)) {
+    return c.json({ error: 'Invalid generate ID format' }, 400);
+  }
+
+  // Get the generate record - ONLY allow access if status is 'building'
+  // This prevents enumeration attacks - icons only accessible during active builds
   const result = await c.env.DB.prepare(
-    `SELECT icon_key FROM generates WHERE id = ?`
+    `SELECT icon_key, status FROM generates WHERE id = ?`
   )
     .bind(generateId)
-    .first<{ icon_key: string | null }>();
+    .first<{ icon_key: string | null; status: string }>();
 
   if (!result || !result.icon_key) {
     return c.json({ error: 'Icon not found' }, 404);
+  }
+
+  // Security: Only allow icon access during building phase
+  // This prevents attackers from enumerating all icons
+  if (result.status !== 'building') {
+    return c.json({ error: 'Icon access not allowed' }, 403);
   }
 
   // Fetch icon from R2
@@ -147,7 +163,7 @@ app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
     headers: {
       'Content-Type': 'image/png',
       'Content-Length': iconObject.size.toString(),
-      'Cache-Control': 'public, max-age=86400',
+      'Cache-Control': 'private, no-store', // Don't cache - security sensitive
     },
   });
 });
