@@ -439,3 +439,57 @@
 
 
   - Ensure all tests pass, ask the user if questions arise.
+
+## Phase 8: Android Permission Features
+
+- [x] 25. Add database migration for permission columns
+  - [x] 25.1 Create migration file 0003_permissions.sql
+    - Add enable_gps INTEGER DEFAULT 0 column to generates table
+    - Add enable_camera INTEGER DEFAULT 0 column to generates table
+    - _Requirements: 11.7_
+
+- [x] 26. Update API and shared types for permissions
+  - [x] 26.1 Update TypeScript interfaces in shared package
+    - Add enable_gps and enable_camera to Generate interface
+    - Add enable_gps and enable_camera to GenerateRequest interface
+    - Add enable_gps and enable_camera to BuildPayload interface
+    - _Requirements: 3.7, 3.8, 11.7_
+  - [x] 26.2 Update generate endpoint to handle permission flags
+    - Accept enable_gps and enable_camera in POST /api/generate
+    - Store permission flags in D1 generates table
+    - Include permission flags in GitHub Actions dispatch payload
+    - _Requirements: 3.7, 3.8, 6.6, 6.7_
+  - [ ]* 26.3 Write property test for permission flags persistence
+    - **Property 20: Permission Flags Persistence**
+    - **Validates: Requirements 3.7, 3.8, 11.7**
+
+- [x] 27. Update frontend generate form
+  - [x] 27.1 Add permission checkboxes to generate form
+    - Add GPS permission toggle with label "Izin Lokasi (GPS)"
+    - Add Camera permission toggle with label "Izin Kamera"
+    - Add helper text explaining use cases (absensi, foto)
+    - _Requirements: 3.7, 3.8_
+  - [x] 27.2 Update form submission to include permission flags
+    - Send enable_gps and enable_camera to API
+    - _Requirements: 3.7, 3.8_
+
+- [x] 28. Update GitHub Actions build workflow for permissions
+  - [x] 28.1 Update build-apk.yml to handle permission flags
+    - Read enable_gps and enable_camera from client_payload
+    - Conditionally add permissions to AndroidManifest.xml
+    - Conditionally add geolocation code to MainActivity.kt
+    - Conditionally add camera/file chooser code to MainActivity.kt
+    - _Requirements: 6.6, 6.7, 11.1, 11.2, 11.3, 11.4_
+
+- [x] 29. Update Android template for permission support
+  - [x] 29.1 Create permission-aware MainActivity.kt template
+    - Add geolocation permission handling code block
+    - Add camera/file chooser code block
+    - Add runtime permission request handling
+    - _Requirements: 11.3, 11.4, 11.5, 11.6_
+
+- [x] 30. Checkpoint - Test permission features
+  - Test generate form with GPS and camera toggles
+  - Test build workflow with permission flags
+  - Verify generated APK has correct permissions in manifest
+  - Ensure all tests pass, ask the user if questions arise.

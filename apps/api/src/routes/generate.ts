@@ -113,6 +113,8 @@ generate.post('/', authMiddleware, generateRateLimit, turnstileMiddleware(), asy
   const appName = formData.get('app_name') as string | null;
   const packageName = formData.get('package_name') as string | null;
   const iconFile = formData.get('icon') as File | null;
+  const enableGps = formData.get('enable_gps') === 'true' || formData.get('enable_gps') === '1';
+  const enableCamera = formData.get('enable_camera') === 'true' || formData.get('enable_camera') === '1';
 
   // Validate required fields exist
   if (!url || !appName || !packageName) {
@@ -199,12 +201,12 @@ generate.post('/', authMiddleware, generateRateLimit, turnstileMiddleware(), asy
     },
   });
 
-  // Create generate record in D1 with status pending (Requirement 3.1)
+  // Create generate record in D1 with status pending (Requirement 3.1, 3.7, 3.8)
   await c.env.DB.prepare(
-    `INSERT INTO generates (id, user_id, url, app_name, package_name, icon_key, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'pending')`
+    `INSERT INTO generates (id, user_id, url, app_name, package_name, icon_key, status, enable_gps, enable_camera)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
   )
-    .bind(generateId_, userId, url, appName, packageName, iconKey)
+    .bind(generateId_, userId, url, appName, packageName, iconKey, enableGps ? 1 : 0, enableCamera ? 1 : 0)
     .run();
 
   // Create payment record in D1 with status pending (Requirement 4.3)
@@ -253,7 +255,7 @@ generate.get('/', authMiddleware, async (c) => {
 
   // Query only current user's generates (Property 18: User Data Isolation)
   const result = await c.env.DB.prepare(
-    `SELECT id, url, app_name, package_name, status, error_message, download_count, created_at, completed_at
+    `SELECT id, url, app_name, package_name, status, error_message, download_count, enable_gps, enable_camera, created_at, completed_at
      FROM generates
      WHERE user_id = ?
      ORDER BY created_at DESC`
@@ -261,8 +263,15 @@ generate.get('/', authMiddleware, async (c) => {
     .bind(userId)
     .all();
 
+  // Convert integer flags to boolean
+  const generates = (result.results || []).map((g: Record<string, unknown>) => ({
+    ...g,
+    enable_gps: Boolean(g.enable_gps),
+    enable_camera: Boolean(g.enable_camera),
+  }));
+
   return c.json({
-    generates: result.results || [],
+    generates,
   });
 });
 
@@ -289,7 +298,7 @@ generate.get('/:id', authMiddleware, async (c) => {
 
   // Query generate with ownership verification (Property 18: User Data Isolation)
   const result = await c.env.DB.prepare(
-    `SELECT id, url, app_name, package_name, icon_key, apk_key, status, error_message, download_count, created_at, completed_at
+    `SELECT id, url, app_name, package_name, icon_key, apk_key, status, error_message, download_count, enable_gps, enable_camera, created_at, completed_at
      FROM generates
      WHERE id = ? AND user_id = ?`
   )
@@ -302,8 +311,15 @@ generate.get('/:id', authMiddleware, async (c) => {
     });
   }
 
+  // Convert integer flags to boolean
+  const generate = {
+    ...result,
+    enable_gps: Boolean(result.enable_gps),
+    enable_camera: Boolean(result.enable_camera),
+  };
+
   return c.json({
-    generate: result,
+    generate,
   });
 });
 

@@ -72,6 +72,8 @@ admin.post('/payments/:id/confirm', async (c) => {
       g.app_name,
       g.package_name,
       g.icon_key,
+      g.enable_gps,
+      g.enable_camera,
       u.email as user_email
     FROM payments p
     JOIN generates g ON p.generate_id = g.id
@@ -88,6 +90,8 @@ admin.post('/payments/:id/confirm', async (c) => {
       app_name: string;
       package_name: string;
       icon_key: string;
+      enable_gps: number;
+      enable_camera: number;
       user_email: string;
     }>();
 
@@ -152,6 +156,8 @@ admin.post('/payments/:id/confirm', async (c) => {
             package_name: payment.package_name,
             icon_url: iconUrl,
             callback_url: callbackUrl,
+            enable_gps: Boolean(payment.enable_gps),
+            enable_camera: Boolean(payment.enable_camera),
           },
         }),
       }

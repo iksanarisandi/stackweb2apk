@@ -24,6 +24,8 @@ export interface Generate {
   status: GenerateStatus;
   error_message: string | null;
   download_count: number;
+  enable_gps: boolean;
+  enable_camera: boolean;
   created_at: string;
   completed_at: string | null;
 }

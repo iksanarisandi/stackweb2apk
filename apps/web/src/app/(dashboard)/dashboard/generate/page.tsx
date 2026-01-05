@@ -33,6 +33,8 @@ export default function GenerateFormPage() {
   const [packageName, setPackageName] = useState('');
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [enableGps, setEnableGps] = useState(false);
+  const [enableCamera, setEnableCamera] = useState(false);
 
   // UI state
   const [isLoading, setIsLoading] = useState(false);
@@ -152,6 +154,8 @@ export default function GenerateFormPage() {
       formData.append('app_name', appName);
       formData.append('package_name', packageName);
       formData.append('turnstile_token', turnstileToken);
+      formData.append('enable_gps', enableGps ? 'true' : 'false');
+      formData.append('enable_camera', enableCamera ? 'true' : 'false');
       if (iconFile) {
         formData.append('icon', iconFile);
       }
@@ -360,6 +364,56 @@ export default function GenerateFormPage() {
           </div>
         </div>
 
+        {/* Permission Options (Requirements 3.7, 3.8, 11.1-11.6) */}
+        <div>
+          <label className="label">
+            Izin Aplikasi (Opsional)
+          </label>
+          <p className="text-sm text-gray-500 mb-3">
+            Pilih izin yang dibutuhkan aplikasi Anda. Cocok untuk aplikasi absensi atau yang membutuhkan akses kamera.
+          </p>
+
+          <div className="space-y-3">
+            {/* GPS Permission Toggle */}
+            <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-300 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={enableGps}
+                onChange={(e) => setEnableGps(e.target.checked)}
+                className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <LocationIcon className="w-5 h-5 text-green-600" />
+                  <span className="font-medium text-gray-900">Izin Lokasi (GPS)</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  Memungkinkan aplikasi mengakses lokasi perangkat. Cocok untuk fitur absensi berbasis lokasi.
+                </p>
+              </div>
+            </label>
+
+            {/* Camera Permission Toggle */}
+            <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-300 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={enableCamera}
+                onChange={(e) => setEnableCamera(e.target.checked)}
+                className="mt-1 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <CameraIcon className="w-5 h-5 text-purple-600" />
+                  <span className="font-medium text-gray-900">Izin Kamera</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  Memungkinkan aplikasi mengakses kamera untuk foto. Cocok untuk upload foto atau selfie absensi.
+                </p>
+              </div>
+            </label>
+          </div>
+        </div>
+
         {/* Price Info */}
         <div className="bg-blue-50 rounded-lg p-4">
           <div className="flex items-center">
@@ -434,6 +488,24 @@ function InfoIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function LocationIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function CameraIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   );
 }

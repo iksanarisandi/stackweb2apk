@@ -55,6 +55,8 @@ Web2APK adalah SaaS berbasis Cloudflare yang mengonversi website menjadi Android
 4. WHEN a user uploads icon that is not 512x512 PNG THEN Web2APK SHALL reject submission and display icon dimension requirement
 5. WHEN a user uploads icon larger than 1MB THEN Web2APK SHALL reject submission and display file size limit error
 6. WHEN form validation passes THEN Web2APK SHALL store icon to R2 and display QRIS payment screen
+7. WHEN a user toggles GPS permission checkbox THEN Web2APK SHALL store enable_gps flag in generate record
+8. WHEN a user toggles camera permission checkbox THEN Web2APK SHALL store enable_camera flag in generate record
 
 ### Requirement 4: Payment Processing
 
@@ -89,6 +91,8 @@ Web2APK adalah SaaS berbasis Cloudflare yang mengonversi website menjadi Android
 3. WHEN APK build succeeds THEN Web2APK SHALL upload signed APK to R2 storage and update generate record with download URL
 4. WHEN APK build fails THEN Web2APK SHALL update generate status to failed and log error details
 5. WHEN APK is uploaded to R2 THEN Web2APK SHALL generate presigned download URL with 7-day expiry
+6. WHEN enable_gps flag is true THEN Web2APK SHALL add location permissions to AndroidManifest.xml and configure geolocation in MainActivity.kt
+7. WHEN enable_camera flag is true THEN Web2APK SHALL add camera permission to AndroidManifest.xml and configure camera/file chooser in MainActivity.kt
 
 ### Requirement 7: APK Download
 
@@ -135,3 +139,17 @@ Web2APK adalah SaaS berbasis Cloudflare yang mengonversi website menjadi Android
 3. WHEN storing payment data THEN Web2APK SHALL save to D1 with schema (id, user_id, generate_id, amount, status, created_at)
 4. WHEN storing icon files THEN Web2APK SHALL upload to R2 with unique key based on generate_id
 5. WHEN storing APK files THEN Web2APK SHALL upload to R2 with lifecycle policy for 30-day auto-deletion
+
+### Requirement 11: Android Permission Configuration
+
+**User Story:** As a developer building attendance/absensi apps, I want to configure GPS and camera permissions in my generated APK, so that my web app can access device location and camera for attendance features.
+
+#### Acceptance Criteria
+
+1. WHEN a user enables GPS permission option in generate form THEN Web2APK SHALL include ACCESS_FINE_LOCATION and ACCESS_COARSE_LOCATION permissions in AndroidManifest.xml
+2. WHEN a user enables camera permission option in generate form THEN Web2APK SHALL include CAMERA permission in AndroidManifest.xml
+3. WHEN GPS permission is enabled THEN Web2APK SHALL configure WebView to allow geolocation access with onGeolocationPermissionsShowPrompt callback
+4. WHEN camera permission is enabled THEN Web2APK SHALL configure WebView to allow camera access via WebChromeClient file chooser for photo capture
+5. WHEN the APK is launched and web app requests location THEN the generated APK SHALL prompt user for location permission and pass coordinates to WebView
+6. WHEN the APK is launched and web app requests camera access THEN the generated APK SHALL prompt user for camera permission and allow photo capture via input file
+7. WHEN storing generate data with permissions THEN Web2APK SHALL save permission flags (enable_gps, enable_camera) in D1 generates table

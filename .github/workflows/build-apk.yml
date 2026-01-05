@@ -15,6 +15,8 @@ env:
   PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
   ICON_URL: ${{ github.event.client_payload.icon_url }}
   CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+  ENABLE_GPS: ${{ github.event.client_payload.enable_gps }}
+  ENABLE_CAMERA: ${{ github.event.client_payload.enable_camera }}
 
 jobs:
   build:
@@ -31,6 +33,8 @@ jobs:
           echo "URL: $APP_URL"
           echo "App Name: $APP_NAME"
           echo "Package Name: $PACKAGE_NAME"
+          echo "Enable GPS: $ENABLE_GPS"
+          echo "Enable Camera: $ENABLE_CAMERA"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -86,7 +90,123 @@ jobs:
         run: |
           mkdir -p "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}"
           
-          cat > "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt" << 'KOTLIN_EOF'
+          # Determine which features to enable
+          GPS_ENABLED="${ENABLE_GPS:-false}"
+          CAMERA_ENABLED="${ENABLE_CAMERA:-false}"
+          
+          # Build imports based on features
+          EXTRA_IMPORTS=""
+          if [ "$GPS_ENABLED" = "true" ]; then
+            EXTRA_IMPORTS="${EXTRA_IMPORTS}
+          import android.Manifest
+          import android.content.pm.PackageManager
+          import android.webkit.GeolocationPermissions
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat"
+          fi
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            EXTRA_IMPORTS="${EXTRA_IMPORTS}
+          import android.app.Activity
+          import android.provider.MediaStore"
+            if [ "$GPS_ENABLED" != "true" ]; then
+              EXTRA_IMPORTS="${EXTRA_IMPORTS}
+          import android.Manifest
+          import android.content.pm.PackageManager
+          import androidx.core.app.ActivityCompat
+          import androidx.core.content.ContextCompat"
+            fi
+          fi
+          
+          # Build permission request code constants
+          PERMISSION_CONSTANTS=""
+          if [ "$GPS_ENABLED" = "true" ]; then
+            PERMISSION_CONSTANTS="${PERMISSION_CONSTANTS}
+              private val LOCATION_PERMISSION_REQUEST_CODE = 1000"
+          fi
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            PERMISSION_CONSTANTS="${PERMISSION_CONSTANTS}
+              private var filePathCallback: ValueCallback<Array<Uri>>? = null
+              private val FILE_CHOOSER_REQUEST_CODE = 1001
+              private val CAMERA_PERMISSION_REQUEST_CODE = 1002"
+          fi
+          
+          # Build onCreate permission requests
+          PERMISSION_REQUESTS=""
+          if [ "$GPS_ENABLED" = "true" ]; then
+            PERMISSION_REQUESTS="${PERMISSION_REQUESTS}
+                  // Request location permission for GPS features (Requirement 11.5)
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), LOCATION_PERMISSION_REQUEST_CODE)
+                  }"
+          fi
+          
+          # Build WebChromeClient methods
+          CHROME_CLIENT_METHODS=""
+          if [ "$GPS_ENABLED" = "true" ]; then
+            CHROME_CLIENT_METHODS="${CHROME_CLIENT_METHODS}
+                          // Geolocation permission callback (Requirement 11.3)
+                          override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
+                              callback?.invoke(origin, true, false)
+                          }"
+          fi
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            CHROME_CLIENT_METHODS="${CHROME_CLIENT_METHODS}
+                          // File chooser for camera/gallery access (Requirement 11.4)
+                          override fun onShowFileChooser(
+                              webView: WebView?,
+                              filePathCallback: ValueCallback<Array<Uri>>?,
+                              fileChooserParams: FileChooserParams?
+                          ): Boolean {
+                              this@MainActivity.filePathCallback?.onReceiveValue(null)
+                              this@MainActivity.filePathCallback = filePathCallback
+                              
+                              // Check camera permission
+                              if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                                  ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
+                                  return true
+                              }
+                              
+                              openFileChooser()
+                              return true
+                          }"
+          fi
+          
+          # Build activity result handler
+          ACTIVITY_RESULT_HANDLER=""
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            ACTIVITY_RESULT_HANDLER="
+              private fun openFileChooser() {
+                  val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+                  val pickIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                      type = \"image/*\"
+                  }
+                  val chooserIntent = Intent.createChooser(pickIntent, \"Select Image\")
+                  chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(takePictureIntent))
+                  startActivityForResult(chooserIntent, FILE_CHOOSER_REQUEST_CODE)
+              }
+
+              @Deprecated(\"Deprecated in Java\")
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+                      filePathCallback?.onReceiveValue(
+                          if (resultCode == Activity.RESULT_OK) {
+                              WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+                          } else null
+                      )
+                      filePathCallback = null
+                  }
+              }
+
+              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  if (requestCode == CAMERA_PERMISSION_REQUEST_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                      openFileChooser()
+                  }
+              }"
+          fi
+          
+          cat > "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt" << KOTLIN_EOF
           package __PACKAGE_NAME__
 
           import android.annotation.SuppressLint
@@ -98,12 +218,12 @@ jobs:
           import android.os.Bundle
           import android.webkit.*
           import androidx.appcompat.app.AppCompatActivity
-          import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+          import androidx.swiperefreshlayout.widget.SwipeRefreshLayout${EXTRA_IMPORTS}
 
           class MainActivity : AppCompatActivity() {
               private lateinit var webView: WebView
               private lateinit var swipeRefreshLayout: SwipeRefreshLayout
-              private val url = "__APP_URL__"
+              private val url = "__APP_URL__"${PERMISSION_CONSTANTS}
 
               @SuppressLint("SetJavaScriptEnabled")
               override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,7 +232,7 @@ jobs:
                   webView = findViewById(R.id.webView)
                   swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
                   setupWebView()
-                  setupSwipeRefresh()
+                  setupSwipeRefresh()${PERMISSION_REQUESTS}
                   if (isNetworkAvailable()) {
                       webView.loadUrl(url)
                   } else {
@@ -131,6 +251,9 @@ jobs:
                   webSettings.setSupportZoom(true)
                   webSettings.builtInZoomControls = true
                   webSettings.displayZoomControls = false
+                  webSettings.javaScriptCanOpenWindowsAutomatically = true
+                  webSettings.mediaPlaybackRequiresUserGesture = false
+                  webSettings.setGeolocationEnabled(true)
 
                   webView.webViewClient = object : WebViewClient() {
                       override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -157,7 +280,7 @@ jobs:
                       override fun onProgressChanged(view: WebView?, newProgress: Int) {
                           super.onProgressChanged(view, newProgress)
                           swipeRefreshLayout.isRefreshing = newProgress < 100
-                      }
+                      }${CHROME_CLIENT_METHODS}
                   }
               }
 
@@ -202,7 +325,7 @@ jobs:
                   val caps = cm.getNetworkCapabilities(network) ?: return false
                   return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
               }
-
+          ${ACTIVITY_RESULT_HANDLER}
               @Deprecated("Deprecated in Java")
               override fun onBackPressed() {
                   if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
@@ -283,12 +406,31 @@ jobs:
 
       - name: Replace AndroidManifest.xml
         run: |
-          cat > webviewCatatUang/app/src/main/AndroidManifest.xml << 'EOF'
+          # Determine which permissions to add
+          GPS_ENABLED="${ENABLE_GPS:-false}"
+          CAMERA_ENABLED="${ENABLE_CAMERA:-false}"
+          
+          # Build permission lines
+          GPS_PERMISSIONS=""
+          if [ "$GPS_ENABLED" = "true" ]; then
+            GPS_PERMISSIONS="    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />
+              <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />"
+          fi
+          
+          CAMERA_PERMISSIONS=""
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            CAMERA_PERMISSIONS="    <uses-permission android:name=\"android.permission.CAMERA\" />
+              <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />"
+          fi
+          
+          cat > webviewCatatUang/app/src/main/AndroidManifest.xml << EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:tools="http://schemas.android.com/tools">
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+          ${GPS_PERMISSIONS}
+          ${CAMERA_PERMISSIONS}
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
@@ -311,6 +453,7 @@ jobs:
               </application>
           </manifest>
           EOF
+          echo "AndroidManifest.xml replaced with GPS=$GPS_ENABLED, Camera=$CAMERA_ENABLED"
 
       - name: Replace settings.gradle
         run: |

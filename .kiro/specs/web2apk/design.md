@@ -71,9 +71,9 @@ app/
 
 **Key Components:**
 - `AuthForm` - Login/register form dengan validation
-- `GenerateForm` - Form input URL, app name, package name, icon upload
+- `GenerateForm` - Form input URL, app name, package name, icon upload, GPS/Camera permission toggles
 - `PaymentModal` - Display QRIS dan WA confirmation button
-- `GenerateList` - Table history generate dengan status badges
+- `GenerateList` - Table history generate dengan status badges dan permission indicators
 - `AdminPaymentList` - List pending payments untuk admin
 
 ### 2. Backend (Hono - Cloudflare Workers)
@@ -114,7 +114,9 @@ POST   /api/webhook/build-complete  # GitHub Actions callback
     "app_name": "My App",
     "package_name": "com.example.app",
     "icon_url": "https://r2.../icon.png",
-    "callback_url": "https://api.../webhook/build-complete"
+    "callback_url": "https://api.../webhook/build-complete",
+    "enable_gps": true,
+    "enable_camera": true
   }
 }
 ```
@@ -123,10 +125,86 @@ POST   /api/webhook/build-complete  # GitHub Actions callback
 1. Checkout template repository
 2. Download icon from R2
 3. Replace configuration files (MainActivity.kt, strings.xml, build.gradle, etc.)
-4. Generate keystore atau use existing
-5. Run `./gradlew assembleRelease`
-6. Upload APK to R2
-7. Call callback URL dengan status
+4. Apply permission configuration based on enable_gps and enable_camera flags
+5. Generate keystore atau use existing
+6. Run `./gradlew assembleRelease`
+7. Upload APK to R2
+8. Call callback URL dengan status
+
+### 4. Android Permission Configuration
+
+**AndroidManifest.xml Permissions:**
+
+When `enable_gps` is true, add:
+```xml
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+```
+
+When `enable_camera` is true, add:
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-feature android:name="android.hardware.camera" android:required="false" />
+```
+
+**MainActivity.kt Geolocation Support (when enable_gps=true):**
+```kotlin
+// Add geolocation permission callback
+webView.webChromeClient = object : WebChromeClient() {
+    override fun onGeolocationPermissionsShowPrompt(
+        origin: String?,
+        callback: GeolocationPermissions.Callback?
+    ) {
+        callback?.invoke(origin, true, false)
+    }
+}
+
+// Request runtime permission
+if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) 
+    != PackageManager.PERMISSION_GRANTED) {
+    ActivityCompat.requestPermissions(this, 
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), 
+        LOCATION_PERMISSION_REQUEST_CODE)
+}
+```
+
+**MainActivity.kt Camera/File Chooser Support (when enable_camera=true):**
+```kotlin
+private var filePathCallback: ValueCallback<Array<Uri>>? = null
+private val FILE_CHOOSER_REQUEST_CODE = 1001
+
+webView.webChromeClient = object : WebChromeClient() {
+    override fun onShowFileChooser(
+        webView: WebView?,
+        filePathCallback: ValueCallback<Array<Uri>>?,
+        fileChooserParams: FileChooserParams?
+    ): Boolean {
+        this@MainActivity.filePathCallback = filePathCallback
+        
+        val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        val pickIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "image/*"
+        }
+        
+        val chooserIntent = Intent.createChooser(pickIntent, "Select Image")
+        chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(takePictureIntent))
+        startActivityForResult(chooserIntent, FILE_CHOOSER_REQUEST_CODE)
+        return true
+    }
+}
+
+// Handle result
+override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+        filePathCallback?.onReceiveValue(
+            if (resultCode == Activity.RESULT_OK) {
+                WebChromeClient.FileChooserParams.parseResult(resultCode, data)
+            } else null
+        )
+        filePathCallback = null
+    }
+}
+```
 
 ## Data Models
 
@@ -154,6 +232,8 @@ CREATE TABLE generates (
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'building', 'ready', 'failed')),
   error_message TEXT,
   download_count INTEGER DEFAULT 0,
+  enable_gps INTEGER DEFAULT 0,
+  enable_camera INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   completed_at DATETIME
 );
@@ -198,6 +278,8 @@ interface Generate {
   status: 'pending' | 'confirmed' | 'building' | 'ready' | 'failed';
   error_message: string | null;
   download_count: number;
+  enable_gps: boolean;
+  enable_camera: boolean;
   created_at: string;
   completed_at: string | null;
 }
@@ -218,6 +300,8 @@ interface GenerateRequest {
   app_name: string;
   package_name: string;
   icon: File;
+  enable_gps?: boolean;
+  enable_camera?: boolean;
 }
 
 interface BuildPayload {
@@ -227,6 +311,8 @@ interface BuildPayload {
   package_name: string;
   icon_url: string;
   callback_url: string;
+  enable_gps: boolean;
+  enable_camera: boolean;
 }
 ```
 
@@ -311,6 +397,18 @@ interface BuildPayload {
 ### Property 19: Generate Record Round-Trip
 *For any* valid generate request data, storing to D1 and then retrieving by ID SHALL return equivalent data (url, app_name, package_name match).
 **Validates: Requirements 10.2**
+
+### Property 20: Permission Flags Persistence
+*For any* generate request with enable_gps and enable_camera flags, storing to D1 and then retrieving by ID SHALL return the same permission flag values.
+**Validates: Requirements 3.7, 3.8, 11.7**
+
+### Property 21: GPS Permission Configuration
+*For any* build payload with enable_gps=true, the generated AndroidManifest.xml SHALL contain ACCESS_FINE_LOCATION and ACCESS_COARSE_LOCATION permissions, and MainActivity.kt SHALL contain onGeolocationPermissionsShowPrompt callback implementation.
+**Validates: Requirements 6.6, 11.1, 11.3**
+
+### Property 22: Camera Permission Configuration
+*For any* build payload with enable_camera=true, the generated AndroidManifest.xml SHALL contain CAMERA permission, and MainActivity.kt SHALL contain onShowFileChooser implementation for camera/file access.
+**Validates: Requirements 6.7, 11.2, 11.4**
 
 ## Error Handling
 
