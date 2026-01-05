@@ -107,7 +107,8 @@ jobs:
           if [ "$CAMERA_ENABLED" = "true" ]; then
             EXTRA_IMPORTS="${EXTRA_IMPORTS}
           import android.app.Activity
-          import android.provider.MediaStore"
+          import android.provider.MediaStore
+          import android.webkit.PermissionRequest"
             if [ "$GPS_ENABLED" != "true" ]; then
               EXTRA_IMPORTS="${EXTRA_IMPORTS}
           import android.Manifest
@@ -139,6 +140,13 @@ jobs:
                       ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION), LOCATION_PERMISSION_REQUEST_CODE)
                   }"
           fi
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            PERMISSION_REQUESTS="${PERMISSION_REQUESTS}
+                  // Request camera permission at startup for WebRTC access (Requirement 11.5)
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
+                  }"
+          fi
           
           # Build WebChromeClient methods
           CHROME_CLIENT_METHODS=""
@@ -151,6 +159,13 @@ jobs:
           fi
           if [ "$CAMERA_ENABLED" = "true" ]; then
             CHROME_CLIENT_METHODS="${CHROME_CLIENT_METHODS}
+                          // WebRTC permission request - auto grant all permissions for camera/mic access (Requirement 11.4)
+                          override fun onPermissionRequest(request: PermissionRequest?) {
+                              runOnUiThread {
+                                  request?.grant(request.resources)
+                              }
+                          }
+
                           // File chooser for camera/gallery access (Requirement 11.4)
                           override fun onShowFileChooser(
                               webView: WebView?,
@@ -200,8 +215,17 @@ jobs:
 
               override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-                  if (requestCode == CAMERA_PERMISSION_REQUEST_CODE && grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                      openFileChooser()
+                  if (requestCode == CAMERA_PERMISSION_REQUEST_CODE) {
+                      if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                          // Camera permission granted - file chooser will work now
+                          if (filePathCallback != null) {
+                              openFileChooser()
+                          }
+                      } else {
+                          // Permission denied - cancel file chooser
+                          filePathCallback?.onReceiveValue(null)
+                          filePathCallback = null
+                      }
                   }
               }"
           fi
