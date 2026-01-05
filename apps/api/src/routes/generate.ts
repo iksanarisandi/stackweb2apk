@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { generateRequestSchema } from '@web2apk/shared';
 import { generateId } from '../lib/auth';
-import { authMiddleware, generateRateLimit, sanitizeUrl, validatePackageName, validateAppName, turnstileMiddleware, downloadRateLimit } from '../middleware';
+import { authMiddleware, generateRateLimit, generateIpRateLimit, sanitizeUrl, validatePackageName, validateAppName, turnstileMiddleware, downloadRateLimit } from '../middleware';
 import type { Env, Variables } from '../index';
 import type { ZodIssue } from 'zod';
 
@@ -13,7 +13,6 @@ const MAX_ICON_SIZE = 1048576; // 1MB in bytes
 const REQUIRED_ICON_WIDTH = 512;
 const REQUIRED_ICON_HEIGHT = 512;
 const PAYMENT_AMOUNT = 35000; // Rp35.000
-const GENERATE_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown
 
 /**
  * Validate PNG file header and dimensions
@@ -69,41 +68,17 @@ async function validatePngIcon(
 /**
  * POST /api/generate
  * Create a new APK generation request
- * Rate limited: 1 per hour per user
+ * Rate limited: 5 per hour per user + 10 per hour per IP
  * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.3
  * Turnstile protected: Yes
  */
-generate.post('/', authMiddleware, generateRateLimit, turnstileMiddleware(), async (c) => {
+generate.post('/', authMiddleware, generateRateLimit, generateIpRateLimit, turnstileMiddleware(), async (c) => {
   const userId = c.get('userId');
 
   if (!userId) {
     throw new HTTPException(401, {
       message: 'Authentication required',
     });
-  }
-
-  // Check user's last generate time (additional rate limit check)
-  const user = await c.env.DB.prepare(
-    'SELECT last_generate_at FROM users WHERE id = ?'
-  )
-    .bind(userId)
-    .first<{ last_generate_at: string | null }>();
-
-  if (user?.last_generate_at) {
-    const lastGenerate = new Date(user.last_generate_at).getTime();
-    const now = Date.now();
-    if (now - lastGenerate < GENERATE_COOLDOWN_MS) {
-      const remainingMs = GENERATE_COOLDOWN_MS - (now - lastGenerate);
-      const remainingMins = Math.ceil(remainingMs / 60000);
-      return c.json(
-        {
-          error: 'RATE_LIMIT_EXCEEDED',
-          message: `Anda hanya dapat generate 1 APK per jam. Silakan tunggu ${remainingMins} menit lagi.`,
-          retryAfter: Math.ceil(remainingMs / 1000),
-        },
-        429
-      );
-    }
   }
 
   // Parse multipart form data
@@ -215,13 +190,6 @@ generate.post('/', authMiddleware, generateRateLimit, turnstileMiddleware(), asy
      VALUES (?, ?, ?, ?, 'pending')`
   )
     .bind(paymentId, userId, generateId_, PAYMENT_AMOUNT)
-    .run();
-
-  // Update user's last_generate_at for rate limiting
-  await c.env.DB.prepare(
-    'UPDATE users SET last_generate_at = ? WHERE id = ?'
-  )
-    .bind(new Date().toISOString(), userId)
     .run();
 
   // Return success response
