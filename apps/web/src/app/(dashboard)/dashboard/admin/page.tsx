@@ -61,6 +61,7 @@ function formatCurrency(amount: number): string {
 export default function AdminPage() {
   const router = useRouter();
   const [payments, setPayments] = useState<AdminPayment[]>([]);
+  const [failedPayments, setFailedPayments] = useState<AdminPayment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -72,6 +73,7 @@ export default function AdminPage() {
       return;
     }
     fetchPayments();
+    fetchFailedPayments();
   }, [router]);
 
   const fetchPayments = async () => {
@@ -95,6 +97,27 @@ export default function AdminPage() {
 
     if (data) {
       setPayments(data.payments);
+    }
+  };
+
+  const fetchFailedPayments = async () => {
+    const token = getToken();
+    if (!token) return;
+
+    setError(null);
+
+    const { data, error: apiError } = await authApiRequest<PaymentsResponse>(
+      '/api/admin/payments/failed-builds',
+      token
+    );
+
+    if (apiError) {
+      setError(apiError.message);
+      return;
+    }
+
+    if (data) {
+      setFailedPayments(data.payments);
     }
   };
 
@@ -157,6 +180,35 @@ export default function AdminPage() {
     if (data) {
       // Remove rejected payment from list
       setPayments((prev) => prev.filter((p) => p.id !== paymentId));
+    }
+  };
+
+  const handleRetryBuild = async (paymentId: string) => {
+    const token = getToken();
+    if (!token) return;
+
+    if (!confirm('Trigger ulang build APK untuk pembayaran ini?')) {
+      return;
+    }
+
+    setProcessingId(paymentId);
+    setError(null);
+
+    const { data, error: apiError } = await authApiRequest<ConfirmResponse>(
+      `/api/admin/payments/${paymentId}/retry-build`,
+      token,
+      { method: 'POST' }
+    );
+
+    setProcessingId(null);
+
+    if (apiError) {
+      setError(apiError.message);
+      return;
+    }
+
+    if (data) {
+      setFailedPayments((prev) => prev.filter((p) => p.id !== paymentId));
     }
   };
 
@@ -241,6 +293,67 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      <div className="card mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Generate Bermasalah
+          </h2>
+          <button
+            onClick={fetchFailedPayments}
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            <RefreshIcon className="w-4 h-4 inline mr-1" />
+            Refresh
+          </button>
+        </div>
+
+        {failedPayments.length === 0 ? (
+          <div className="text-center py-8">
+            <EmptyIcon className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500">
+              Tidak ada generate yang gagal atau tertahan
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    User
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    App Details
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Amount
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {failedPayments.map((payment) => (
+                  <FailedPaymentRow
+                    key={payment.id}
+                    payment={payment}
+                    onRetry={handleRetryBuild}
+                    isProcessing={processingId === payment.id}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -312,6 +425,78 @@ function PaymentRow({
             Reject
           </button>
         </div>
+      </td>
+    </tr>
+  );
+}
+
+function FailedPaymentRow({
+  payment,
+  onRetry,
+  isProcessing,
+}: {
+  payment: AdminPayment;
+  onRetry: (id: string) => void;
+  isProcessing: boolean;
+}) {
+  const statusLabel =
+    payment.generate_status === 'failed' ? 'Gagal' : 'Sedang dibuild';
+  const statusClass =
+    payment.generate_status === 'failed'
+      ? 'bg-red-100 text-red-800'
+      : 'bg-purple-100 text-purple-800';
+
+  return (
+    <tr className={isProcessing ? 'opacity-50' : ''}>
+      <td className="px-4 py-4 whitespace-nowrap">
+        <div className="text-sm font-medium text-gray-900">
+          {payment.user_email}
+        </div>
+        <div className="text-xs text-gray-500">
+          ID: {payment.user_id.slice(0, 8)}...
+        </div>
+      </td>
+      <td className="px-4 py-4">
+        <div className="text-sm font-medium text-gray-900">
+          {payment.generate_app_name}
+        </div>
+        <div className="text-xs text-gray-500 truncate max-w-xs">
+          {payment.generate_url}
+        </div>
+        <div className="text-xs text-gray-400">
+          {payment.generate_package_name}
+        </div>
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap">
+        <div className="text-sm font-semibold text-green-600">
+          {formatCurrency(payment.amount)}
+        </div>
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap">
+        <div className="text-sm text-gray-500">
+          {formatDate(payment.created_at)}
+        </div>
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap">
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass}`}
+        >
+          {statusLabel}
+        </span>
+      </td>
+      <td className="px-4 py-4 whitespace-nowrap text-right">
+        <button
+          onClick={() => onRetry(payment.id)}
+          disabled={isProcessing}
+          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isProcessing ? (
+            <span className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full mr-1"></span>
+          ) : (
+            <RefreshIcon className="w-4 h-4 mr-1" />
+          )}
+          Retry Build
+        </button>
       </td>
     </tr>
   );

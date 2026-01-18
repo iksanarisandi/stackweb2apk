@@ -233,4 +233,144 @@ admin.post('/payments/:id/reject', async (c) => {
   });
 });
 
+admin.get('/payments/failed-builds', async (c) => {
+  const result = await c.env.DB.prepare(
+    `SELECT 
+      p.id,
+      p.user_id,
+      p.generate_id,
+      p.amount,
+      p.status,
+      p.created_at,
+      u.email as user_email,
+      g.url as generate_url,
+      g.app_name as generate_app_name,
+      g.package_name as generate_package_name,
+      g.status as generate_status
+    FROM payments p
+    JOIN users u ON p.user_id = u.id
+    JOIN generates g ON p.generate_id = g.id
+    WHERE p.status = 'confirmed'
+      AND g.status IN ('building', 'failed')
+    ORDER BY p.created_at ASC`
+  ).all();
+
+  return c.json({
+    payments: result.results || [],
+  });
+});
+
+admin.post('/payments/:id/retry-build', async (c) => {
+  const paymentId = c.req.param('id');
+
+  if (!paymentId) {
+    throw new HTTPException(400, {
+      message: 'Payment ID is required',
+    });
+  }
+
+  const payment = await c.env.DB.prepare(
+    `SELECT 
+      p.id,
+      p.user_id,
+      p.generate_id,
+      p.status as payment_status,
+      g.url,
+      g.app_name,
+      g.package_name,
+      g.icon_key,
+      g.enable_gps,
+      g.enable_camera,
+      g.status as generate_status
+    FROM payments p
+    JOIN generates g ON p.generate_id = g.id
+    WHERE p.id = ?`
+  )
+    .bind(paymentId)
+    .first<{
+      id: string;
+      user_id: string;
+      generate_id: string;
+      payment_status: string;
+      url: string;
+      app_name: string;
+      package_name: string;
+      icon_key: string;
+      enable_gps: number;
+      enable_camera: number;
+      generate_status: string;
+    }>();
+
+  if (!payment) {
+    throw new HTTPException(404, {
+      message: 'Payment not found',
+    });
+  }
+
+  if (payment.payment_status !== 'confirmed') {
+    throw new HTTPException(400, {
+      message: `Payment is not confirmed. Current status: ${payment.payment_status}`,
+    });
+  }
+
+  if (payment.generate_status === 'ready') {
+    throw new HTTPException(400, {
+      message: 'Generate is already completed',
+    });
+  }
+
+  await c.env.DB.prepare(
+    `UPDATE generates 
+     SET status = 'building', error_message = NULL
+     WHERE id = ?`
+  )
+    .bind(payment.generate_id)
+    .run();
+
+  const baseUrl = new URL(c.req.url).origin;
+  const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
+  const callbackUrl = new URL('/api/webhook/build-complete', c.req.url).toString();
+
+  try {
+    const githubResponse = await fetch(
+      'https://api.github.com/repos/iksanarisandi/stackweb2apk/dispatches',
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github.v3+json',
+          Authorization: `Bearer ${c.env.GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Web2APK-API',
+        },
+        body: JSON.stringify({
+          event_type: 'build_apk',
+          client_payload: {
+            generate_id: payment.generate_id,
+            url: payment.url,
+            app_name: payment.app_name,
+            package_name: payment.package_name,
+            icon_url: iconUrl,
+            callback_url: callbackUrl,
+            enable_gps: Boolean(payment.enable_gps),
+            enable_camera: Boolean(payment.enable_camera),
+          },
+        }),
+      }
+    );
+
+    if (!githubResponse.ok) {
+      console.error('Failed to retry GitHub Actions build:', await githubResponse.text());
+    }
+  } catch (error) {
+    console.error('Error retrying GitHub Actions build:', error);
+  }
+
+  return c.json({
+    message: 'Build retriggered',
+    payment_id: paymentId,
+    generate_id: payment.generate_id,
+    status: 'building',
+  });
+});
+
 export default admin;
