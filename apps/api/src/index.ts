@@ -1,35 +1,24 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { errorHandler, securityHeaders, generalRateLimit, iconRateLimit, initRateLimit, healthRateLimit } from './middleware';
-import { authRoutes, generateRoutes, adminRoutes, webhookRoutes } from './routes';
+import { authRoutes, generateRoutes, adminRoutes, webhookRoutes, telegramRoutes } from './routes';
 import { seedAdmin } from './lib/seed-admin';
 
-/**
- * Environment bindings for Cloudflare Workers
- */
 export interface Env {
-  // D1 Database binding
   DB: D1Database;
-  // R2 Storage binding for icons and APKs
   STORAGE: R2Bucket;
-  // JWT secret for token signing
   JWT_SECRET: string;
-  // Admin credentials for initial setup
   ADMIN_EMAIL: string;
   ADMIN_PASSWORD: string;
-  // GitHub token for triggering Actions
   GITHUB_TOKEN: string;
-  // Webhook secret for build callbacks
   WEBHOOK_SECRET: string;
-  // Allowed CORS origins (comma-separated), e.g. "https://2apk.de,https://example.com"
   ALLOWED_ORIGINS?: string;
-  // Cloudflare Turnstile secret key for CAPTCHA verification
   TURNSTILE_SECRET: string;
+  TELEGRAM_BOT_TOKEN: string;
+  TELEGRAM_ADMIN_ID: string;
+  TELEGRAM_WEBHOOK_SECRET?: string;
 }
 
-/**
- * Custom context variables available in route handlers
- */
 export interface Variables {
   userId?: string;
   userRole?: 'user' | 'admin';
@@ -37,13 +26,10 @@ export interface Variables {
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-// Global error handling middleware
 app.use('*', errorHandler);
 
-// Security headers middleware
 app.use('*', securityHeaders);
 
-// General rate limiting (100 req/min)
 app.use('*', generalRateLimit);
 
 // CORS middleware - allow specific origins for API access
@@ -84,7 +70,6 @@ app.get('/', healthRateLimit, (c) => {
   return c.json({ status: 'ok', service: 'web2apk-api' });
 });
 
-// API health check - rate limited
 app.get('/api/health', healthRateLimit, (c) => {
   return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
 });
@@ -111,16 +96,10 @@ app.post('/api/init', initRateLimit, async (c) => {
   return c.json(result);
 });
 
-// Mount auth routes
 app.route('/api/auth', authRoutes);
 
-// Mount generate routes
 app.route('/api/generate', generateRoutes);
 
-// Public icon endpoint for GitHub Actions to download during APK build
-// Security: Only accessible when generate is in 'building' status
-// This prevents enumeration attacks - icons only accessible during active builds
-// Rate limited: 10 per minute per IP
 app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
   const generateId = c.req.param('generateId');
 
@@ -128,14 +107,11 @@ app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
     return c.json({ error: 'Generate ID is required' }, 400);
   }
 
-  // Validate UUID format to prevent injection
   const uuidRegex = /^[0-9a-f]{32}$/i;
   if (!uuidRegex.test(generateId)) {
     return c.json({ error: 'Invalid generate ID format' }, 400);
   }
 
-  // Get the generate record - ONLY allow access if status is 'building'
-  // This prevents enumeration attacks - icons only accessible during active builds
   const result = await c.env.DB.prepare(
     `SELECT icon_key, status FROM generates WHERE id = ?`
   )
@@ -146,19 +122,15 @@ app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
     return c.json({ error: 'Icon not found' }, 404);
   }
 
-  // Security: Only allow icon access during building phase
-  // This prevents attackers from enumerating all icons
   if (result.status !== 'building') {
     return c.json({ error: 'Icon access not allowed' }, 403);
   }
 
-  // Fetch icon from R2
   const iconObject = await c.env.STORAGE.get(result.icon_key);
   if (!iconObject) {
     return c.json({ error: 'Icon file not found in storage' }, 404);
   }
 
-  // Return the icon file
   return new Response(iconObject.body, {
     headers: {
       'Content-Type': 'image/png',
@@ -168,10 +140,10 @@ app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
   });
 });
 
-// Mount admin routes
 app.route('/api/admin', adminRoutes);
 
-// Mount webhook routes
 app.route('/api/webhook', webhookRoutes);
+
+app.route('/api/telegram', telegramRoutes);
 
 export default app;

@@ -321,6 +321,10 @@ describe('End-to-End Integration Test', () => {
     ADMIN_PASSWORD: string;
     GITHUB_TOKEN: string;
     WEBHOOK_SECRET: string;
+    TURNSTILE_SECRET: string;
+    TELEGRAM_BOT_TOKEN: string;
+    TELEGRAM_ADMIN_ID: string;
+    TELEGRAM_WEBHOOK_SECRET?: string;
   };
 
   beforeEach(() => {
@@ -330,7 +334,6 @@ describe('End-to-End Integration Test', () => {
     mockPayments.clear();
     mockR2Objects.clear();
 
-    // Setup mock environment
     mockEnv = {
       DB: createMockD1(),
       STORAGE: createMockR2(),
@@ -339,12 +342,15 @@ describe('End-to-End Integration Test', () => {
       ADMIN_PASSWORD: 'adminpassword123',
       GITHUB_TOKEN: 'test-github-token',
       WEBHOOK_SECRET: 'test-webhook-secret',
+      TURNSTILE_SECRET: 'test-turnstile-secret',
+      TELEGRAM_BOT_TOKEN: 'test-telegram-token',
+      TELEGRAM_ADMIN_ID: '123456789',
+      TELEGRAM_WEBHOOK_SECRET: 'test-telegram-secret',
     };
 
-    // Mock fetch for GitHub API calls
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({}),
+      json: async () => ({ success: true }),
     });
   });
 
@@ -361,6 +367,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'user@example.com',
           password: 'securepassword123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -385,6 +392,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'user@example.com',
           password: 'securepassword123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -408,6 +416,7 @@ describe('End-to-End Integration Test', () => {
     formData.append('app_name', 'Test App');
     formData.append('package_name', 'com.example.testapp');
     formData.append('icon', iconBlob, 'icon.png');
+    formData.append('turnstile_token', 'test-token');
 
     const generateResponse = await app.request(
       '/api/generate',
@@ -458,6 +467,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'admin@example.com',
           password: 'adminpassword123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -481,6 +491,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'admin@example.com',
           password: 'adminpassword123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -622,6 +633,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'duplicate@example.com',
           password: 'password123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -636,6 +648,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'duplicate@example.com',
           password: 'differentpassword',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -654,6 +667,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'test@example.com',
           password: 'correctpassword',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -668,6 +682,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'test@example.com',
           password: 'wrongpassword',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -686,6 +701,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'regular@example.com',
           password: 'password123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -700,6 +716,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'regular@example.com',
           password: 'password123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -732,6 +749,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'failtest@example.com',
           password: 'password123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -745,6 +763,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'failtest@example.com',
           password: 'password123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -760,6 +779,7 @@ describe('End-to-End Integration Test', () => {
     formData.append('app_name', 'Fail Test App');
     formData.append('package_name', 'com.fail.testapp');
     formData.append('icon', iconBlob, 'icon.png');
+    formData.append('turnstile_token', 'test-token');
 
     const generateResponse = await app.request(
       '/api/generate',
@@ -782,6 +802,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'admin2@example.com',
           password: 'adminpassword123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -803,6 +824,7 @@ describe('End-to-End Integration Test', () => {
         body: JSON.stringify({
           email: 'admin2@example.com',
           password: 'adminpassword123',
+          turnstile_token: 'test-token',
         }),
       },
       mockEnv
@@ -845,5 +867,102 @@ describe('End-to-End Integration Test', () => {
     const genAfterFail = mockGenerates.get(generateId);
     expect(genAfterFail?.status).toBe('failed');
     expect(genAfterFail?.error_message).toBe('Gradle build failed: compilation error');
+  });
+
+  it('should allow admin to confirm payment via Telegram webhook', async () => {
+    const registerResponse = await app.request(
+      '/api/auth/register',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'telegram@example.com',
+          password: 'password123',
+          turnstile_token: 'test-token',
+        }),
+      },
+      mockEnv
+    );
+
+    expect(registerResponse.status).toBe(201);
+
+    const loginResponse = await app.request(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'telegram@example.com',
+          password: 'password123',
+          turnstile_token: 'test-token',
+        }),
+      },
+      mockEnv
+    );
+
+    const { token: userToken } = await loginResponse.json();
+
+    const iconBuffer = createValidPngIcon();
+    const iconBlob = new Blob([iconBuffer], { type: 'image/png' });
+
+    const formData = new FormData();
+    formData.append('url', 'https://telegramtest.com');
+    formData.append('app_name', 'Telegram Test App');
+    formData.append('package_name', 'com.telegram.testapp');
+    formData.append('icon', iconBlob, 'icon.png');
+    formData.append('turnstile_token', 'test-token');
+
+    const generateResponse = await app.request(
+      '/api/generate',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${userToken}` },
+        body: formData,
+      },
+      mockEnv
+    );
+
+    expect(generateResponse.status).toBe(201);
+
+    const { id: generateId, payment } = await generateResponse.json();
+
+    const telegramUpdate = {
+      update_id: 1,
+      message: {
+        message_id: 1,
+        from: {
+          id: Number(mockEnv.TELEGRAM_ADMIN_ID),
+          is_bot: false,
+          first_name: 'Admin',
+        },
+        chat: {
+          id: Number(mockEnv.TELEGRAM_ADMIN_ID),
+          type: 'private',
+        },
+        date: Math.floor(Date.now() / 1000),
+        text: `/confirm ${payment.id}`,
+      },
+    };
+
+    const telegramResponse = await app.request(
+      '/api/telegram/webhook',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Telegram-Bot-Api-Secret-Token': mockEnv.TELEGRAM_WEBHOOK_SECRET as string,
+        },
+        body: JSON.stringify(telegramUpdate),
+      },
+      mockEnv
+    );
+
+    expect(telegramResponse.status).toBe(200);
+
+    const paymentAfter = mockPayments.get(payment.id);
+    const genAfter = mockGenerates.get(generateId);
+
+    expect(paymentAfter?.status).toBe('confirmed');
+    expect(genAfter?.status).toBe('building');
   });
 });

@@ -47,13 +47,13 @@ name = "web2apk-api"
 
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "web2apk-db-prod"
-database_id = "YOUR_PRODUCTION_D1_DATABASE_ID"
+database_name = "web2apk-db"
+database_id = "4562d0a5-9260-47fb-9b16-c3e24985434f"
 migrations_dir = "migrations"
 
 [[env.production.r2_buckets]]
 binding = "STORAGE"
-bucket_name = "web2apk-storage-prod"
+bucket_name = "web2apk-storage"
 
 [env.production.vars]
 ENVIRONMENT = "production"
