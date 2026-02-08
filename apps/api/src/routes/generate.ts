@@ -412,7 +412,7 @@ generate.get('/', authMiddleware, async (c) => {
   // Query only current user's generates (Property 18: User Data Isolation)
   const result = await c.env.DB.prepare(
     `SELECT id, url, build_type, app_name, package_name, status, error_message, download_count,
-      enable_gps, enable_camera, created_at, completed_at, amount, aab_key
+      enable_gps, enable_camera, created_at, completed_at, amount, aab_key, keystore_alias
      FROM generates
      WHERE user_id = ?
      ORDER BY created_at DESC`
