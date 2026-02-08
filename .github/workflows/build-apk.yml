@@ -10,15 +10,13 @@ on:
 
 env:
   GENERATE_ID: ${{ github.event.client_payload.generate_id }}
+  API_URL: ${{ github.event.client_payload.api_url }}
   APP_URL: ${{ github.event.client_payload.url }}
   BUILD_TYPE: ${{ github.event.client_payload.build_type }}
   APP_NAME: ${{ github.event.client_payload.app_name }}
   PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
-  ICON_URL: ${{ github.event.client_payload.icon_url }}
-  HTML_FILES_URL: ${{ github.event.client_payload.html_files_url }}
   KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password }}
   KEYSTORE_ALIAS: ${{ github.event.client_payload.keystore_alias }}
-  CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
   ENABLE_GPS: ${{ github.event.client_payload.enable_gps }}
   ENABLE_CAMERA: ${{ github.event.client_payload.enable_camera }}
 
@@ -54,7 +52,7 @@ jobs:
       - name: Download icon from API
         run: |
           mkdir -p webviewCatatUang/app/src/main/res/mipmap-xxxhdpi
-          curl -L -o icon_512.png "$ICON_URL" || {
+          curl -L -o icon_512.png "${API_URL}/api/icon/${GENERATE_ID}" || {
             echo "Failed to download icon"
             exit 1
           }
@@ -88,7 +86,7 @@ jobs:
       - name: Download HTML files from R2
         if: env.BUILD_TYPE == 'html'
         run: |
-          curl -L -o html_files.zip "$HTML_FILES_URL" || {
+          curl -L -o html_files.zip "${API_URL}/api/html-files/${GENERATE_ID}" || {
             echo "Failed to download HTML files"
             exit 1
           }
@@ -422,9 +420,9 @@ jobs:
               signingConfigs {
                   release {
                       storeFile file('release-keystore.jks')
-                      storePassword '__KEYSTORE_PASSWORD__'
-                      keyAlias '__KEY_ALIAS__'
-                      keyPassword '__KEY_PASSWORD__'
+                      storePassword System.getenv("APP_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("APP_KEY_ALIAS")
+                      keyPassword System.getenv("APP_KEY_PASSWORD")
                   }
               }
               buildTypes {
@@ -452,16 +450,15 @@ jobs:
           GRADLE_EOF
           sed -i "s/__PACKAGE_NAME__/$PACKAGE_NAME/g" webviewCatatUang/app/build.gradle
 
-          # For HTML builds, use per-project keystore credentials
-          # For WebView builds, use shared keystore from secrets
+          # Export variables for the build step
           if [ "$BUILD_TYPE" = "html" ]; then
-            sed -i "s/__KEYSTORE_PASSWORD__/$KEYSTORE_PASSWORD/g" webviewCatatUang/app/build.gradle
-            sed -i "s/__KEY_ALIAS__/$KEYSTORE_ALIAS/g" webviewCatatUang/app/build.gradle
-            sed -i "s/__KEY_PASSWORD__/$KEYSTORE_PASSWORD/g" webviewCatatUang/app/build.gradle
+            echo "APP_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+            echo "APP_KEY_ALIAS=$KEYSTORE_ALIAS" >> $GITHUB_ENV
+            echo "APP_KEY_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
           else
-            sed -i "s/__KEYSTORE_PASSWORD__/$KEYSTORE_PASSWORD_SHARED/g" webviewCatatUang/app/build.gradle
-            sed -i "s/__KEY_ALIAS__/$KEY_ALIAS_SHARED/g" webviewCatatUang/app/build.gradle
-            sed -i "s/__KEY_PASSWORD__/$KEY_PASSWORD_SHARED/g" webviewCatatUang/app/build.gradle
+            echo "APP_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD_SHARED" >> $GITHUB_ENV
+            echo "APP_KEY_ALIAS=$KEY_ALIAS_SHARED" >> $GITHUB_ENV
+            echo "APP_KEY_PASSWORD=$KEY_PASSWORD_SHARED" >> $GITHUB_ENV
           fi
 
       - name: Replace AndroidManifest.xml
@@ -680,7 +677,7 @@ jobs:
             PAYLOAD="$PAYLOAD, \"keystore_key\": \"$keystore_key\""
           fi
           PAYLOAD="$PAYLOAD}"
-          curl -X POST "$CALLBACK_URL" -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+          curl -X POST "${API_URL}/api/webhook/build-complete" -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
             -d "$PAYLOAD"
 
       - name: Call failure callback
@@ -688,5 +685,5 @@ jobs:
         env:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
-          curl -X POST "$CALLBACK_URL" -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
+          curl -X POST "${API_URL}/api/webhook/build-complete" -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
             -d "{\"generate_id\": \"$GENERATE_ID\", \"status\": \"failed\", \"error_message\": \"Build failed\"}"
