@@ -140,7 +140,6 @@ admin.post('/payments/:id/confirm', async (c) => {
 
   // Trigger GitHub Actions workflow via repository dispatch (Requirement 5.4)
   // The callback URL will be called by GitHub Actions when build completes
-  const callbackUrl = new URL('/api/webhook/build-complete', c.req.url).toString();
 
   try {
     const githubResponse = await fetch(
@@ -164,7 +163,6 @@ admin.post('/payments/:id/confirm', async (c) => {
             package_name: payment.package_name,
             keystore_password: payment.keystore_password,
             keystore_alias: payment.keystore_alias,
-            callback_url: callbackUrl,
             enable_gps: Boolean(payment.enable_gps),
             enable_camera: Boolean(payment.enable_camera),
           },
