@@ -11,9 +11,13 @@ on:
 env:
   GENERATE_ID: ${{ github.event.client_payload.generate_id }}
   APP_URL: ${{ github.event.client_payload.url }}
+  BUILD_TYPE: ${{ github.event.client_payload.build_type }}
   APP_NAME: ${{ github.event.client_payload.app_name }}
   PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
   ICON_URL: ${{ github.event.client_payload.icon_url }}
+  HTML_FILES_URL: ${{ github.event.client_payload.html_files_url }}
+  KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password }}
+  KEYSTORE_ALIAS: ${{ github.event.client_payload.keystore_alias }}
   CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
   ENABLE_GPS: ${{ github.event.client_payload.enable_gps }}
   ENABLE_CAMERA: ${{ github.event.client_payload.enable_camera }}
@@ -21,15 +25,16 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Validate payload
         run: |
-          if [ -z "$GENERATE_ID" ] || [ -z "$APP_URL" ] || [ -z "$APP_NAME" ] || [ -z "$PACKAGE_NAME" ]; then
+          if [ -z "$GENERATE_ID" ] || [ -z "$APP_NAME" ] || [ -z "$PACKAGE_NAME" ]; then
             echo "Error: Missing required payload fields"
             exit 1
           fi
           echo "Building APK for generate_id: $GENERATE_ID"
+          echo "Build Type: ${BUILD_TYPE:-webview}"
           echo "URL: $APP_URL"
           echo "App Name: $APP_NAME"
           echo "Package Name: $PACKAGE_NAME"
@@ -64,14 +69,14 @@ jobs:
           find webviewCatatUang/app/src/main/res -name "ic_launcher*.xml" -delete
           find webviewCatatUang/app/src/main/res -name "ic_launcher*.webp" -delete
           rm -rf webviewCatatUang/app/src/main/res/mipmap-anydpi-v26
-          
+
           # Generate different density icons from 512x512 source
           convert icon_512.png -resize 48x48 webviewCatatUang/app/src/main/res/mipmap-mdpi/ic_launcher.png
           convert icon_512.png -resize 72x72 webviewCatatUang/app/src/main/res/mipmap-hdpi/ic_launcher.png
           convert icon_512.png -resize 96x96 webviewCatatUang/app/src/main/res/mipmap-xhdpi/ic_launcher.png
           convert icon_512.png -resize 144x144 webviewCatatUang/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
           convert icon_512.png -resize 192x192 webviewCatatUang/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-          
+
           # Also create round icons
           cp webviewCatatUang/app/src/main/res/mipmap-mdpi/ic_launcher.png webviewCatatUang/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
           cp webviewCatatUang/app/src/main/res/mipmap-hdpi/ic_launcher.png webviewCatatUang/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
@@ -79,6 +84,21 @@ jobs:
           cp webviewCatatUang/app/src/main/res/mipmap-xxhdpi/ic_launcher.png webviewCatatUang/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
           cp webviewCatatUang/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png webviewCatatUang/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
           echo "Icon sizes generated successfully"
+
+      - name: Download HTML files from R2
+        if: env.BUILD_TYPE == 'html'
+        run: |
+          curl -L -o html_files.zip "$HTML_FILES_URL" || {
+            echo "Failed to download HTML files"
+            exit 1
+          }
+          mkdir -p webviewCatatUang/app/src/main/assets
+          unzip -q html_files.zip -d webviewCatatUang/app/src/main/assets/
+          if [ ! -f "webviewCatatUang/app/src/main/assets/index.html" ]; then
+            echo "Error: index.html not found"
+            exit 1
+          fi
+          echo "HTML files extracted successfully"
 
       - name: Extract package name parts
         id: package
@@ -89,11 +109,18 @@ jobs:
       - name: Replace MainActivity.kt
         run: |
           mkdir -p "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}"
-          
+
+          # Determine URL based on build type
+          if [ "$BUILD_TYPE" = "html" ]; then
+            APP_URL_PLACEHOLDER="file:///android_asset/index.html"
+          else
+            APP_URL_PLACEHOLDER="$APP_URL"
+          fi
+
           # Determine which features to enable
           GPS_ENABLED="${ENABLE_GPS:-false}"
           CAMERA_ENABLED="${ENABLE_CAMERA:-false}"
-          
+
           # Build imports based on features
           EXTRA_IMPORTS=""
           if [ "$GPS_ENABLED" = "true" ]; then
@@ -117,7 +144,7 @@ jobs:
           import androidx.core.content.ContextCompat"
             fi
           fi
-          
+
           # Build permission request code constants
           PERMISSION_CONSTANTS=""
           if [ "$GPS_ENABLED" = "true" ]; then
@@ -130,7 +157,7 @@ jobs:
               private val FILE_CHOOSER_REQUEST_CODE = 1001
               private val CAMERA_PERMISSION_REQUEST_CODE = 1002"
           fi
-          
+
           # Build onCreate permission requests
           PERMISSION_REQUESTS=""
           if [ "$GPS_ENABLED" = "true" ]; then
@@ -147,7 +174,7 @@ jobs:
                       ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
                   }"
           fi
-          
+
           # Build WebChromeClient methods
           CHROME_CLIENT_METHODS=""
           if [ "$GPS_ENABLED" = "true" ]; then
@@ -174,18 +201,18 @@ jobs:
                           ): Boolean {
                               this@MainActivity.filePathCallback?.onReceiveValue(null)
                               this@MainActivity.filePathCallback = filePathCallback
-                              
+
                               // Check camera permission
                               if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                                   ActivityCompat.requestPermissions(this@MainActivity, arrayOf(Manifest.permission.CAMERA), CAMERA_PERMISSION_REQUEST_CODE)
                                   return true
                               }
-                              
+
                               openFileChooser()
                               return true
                           }"
           fi
-          
+
           # Build activity result handler
           ACTIVITY_RESULT_HANDLER=""
           if [ "$CAMERA_ENABLED" = "true" ]; then
@@ -229,7 +256,7 @@ jobs:
                   }
               }"
           fi
-          
+
           cat > "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt" << KOTLIN_EOF
           package __PACKAGE_NAME__
 
@@ -247,7 +274,7 @@ jobs:
           class MainActivity : AppCompatActivity() {
               private lateinit var webView: WebView
               private lateinit var swipeRefreshLayout: SwipeRefreshLayout
-              private val url = "__APP_URL__"${PERMISSION_CONSTANTS}
+              private val url = "__APP_URL_PLACEHOLDER__"${PERMISSION_CONSTANTS}
 
               @SuppressLint("SetJavaScriptEnabled")
               override fun onCreate(savedInstanceState: Bundle?) {
@@ -356,9 +383,9 @@ jobs:
               }
           }
           KOTLIN_EOF
-          
+
           sed -i "s/__PACKAGE_NAME__/$PACKAGE_NAME/g" "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt"
-          sed -i "s|__APP_URL__|$APP_URL|g" "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt"
+          sed -i "s|__APP_URL_PLACEHOLDER__|$APP_URL_PLACEHOLDER|g" "webviewCatatUang/app/src/main/java/${{ steps.package.outputs.package_path }}/MainActivity.kt"
           rm -rf webviewCatatUang/app/src/main/java/com/catatung
           echo "MainActivity.kt replaced successfully"
 
@@ -372,9 +399,9 @@ jobs:
 
       - name: Replace build.gradle
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PASSWORD_SHARED: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS_SHARED: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD_SHARED: ${{ secrets.KEY_PASSWORD }}
         run: |
           cat > webviewCatatUang/app/build.gradle << 'GRADLE_EOF'
           plugins {
@@ -424,29 +451,38 @@ jobs:
           }
           GRADLE_EOF
           sed -i "s/__PACKAGE_NAME__/$PACKAGE_NAME/g" webviewCatatUang/app/build.gradle
-          sed -i "s/__KEYSTORE_PASSWORD__/$KEYSTORE_PASSWORD/g" webviewCatatUang/app/build.gradle
-          sed -i "s/__KEY_ALIAS__/$KEY_ALIAS/g" webviewCatatUang/app/build.gradle
-          sed -i "s/__KEY_PASSWORD__/$KEY_PASSWORD/g" webviewCatatUang/app/build.gradle
+
+          # For HTML builds, use per-project keystore credentials
+          # For WebView builds, use shared keystore from secrets
+          if [ "$BUILD_TYPE" = "html" ]; then
+            sed -i "s/__KEYSTORE_PASSWORD__/$KEYSTORE_PASSWORD/g" webviewCatatUang/app/build.gradle
+            sed -i "s/__KEY_ALIAS__/$KEYSTORE_ALIAS/g" webviewCatatUang/app/build.gradle
+            sed -i "s/__KEY_PASSWORD__/$KEYSTORE_PASSWORD/g" webviewCatatUang/app/build.gradle
+          else
+            sed -i "s/__KEYSTORE_PASSWORD__/$KEYSTORE_PASSWORD_SHARED/g" webviewCatatUang/app/build.gradle
+            sed -i "s/__KEY_ALIAS__/$KEY_ALIAS_SHARED/g" webviewCatatUang/app/build.gradle
+            sed -i "s/__KEY_PASSWORD__/$KEY_PASSWORD_SHARED/g" webviewCatatUang/app/build.gradle
+          fi
 
       - name: Replace AndroidManifest.xml
         run: |
           # Determine which permissions to add
           GPS_ENABLED="${ENABLE_GPS:-false}"
           CAMERA_ENABLED="${ENABLE_CAMERA:-false}"
-          
+
           # Build permission lines
           GPS_PERMISSIONS=""
           if [ "$GPS_ENABLED" = "true" ]; then
             GPS_PERMISSIONS="    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />
               <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />"
           fi
-          
+
           CAMERA_PERMISSIONS=""
           if [ "$CAMERA_ENABLED" = "true" ]; then
             CAMERA_PERMISSIONS="    <uses-permission android:name=\"android.permission.CAMERA\" />
               <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />"
           fi
-          
+
           cat > webviewCatatUang/app/src/main/AndroidManifest.xml << EOF
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -536,9 +572,25 @@ jobs:
           </resources>
           EOF
 
-      - name: Decode keystore
+      - name: Generate per-project keystore or decode shared keystore
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > webviewCatatUang/app/release-keystore.jks
+          if [ "$BUILD_TYPE" = "html" ]; then
+            # Generate per-project keystore for HTML builds
+            keytool -genkeypair \
+              -alias "$KEYSTORE_ALIAS" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -keystore webviewCatatUang/app/release-keystore.jks \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -keypass "$KEYSTORE_PASSWORD" \
+              -dname "CN=$APP_NAME, OU=Development, O=Web2APK, C=ID"
+            echo "Per-project keystore generated for HTML build"
+          else
+            # Decode shared keystore for WebView builds
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > webviewCatatUang/app/release-keystore.jks
+            echo "Shared keystore decoded for WebView build"
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x webviewCatatUang/gradlew
@@ -552,6 +604,18 @@ jobs:
         run: |
           APK_PATH=$(find webviewCatatUang/app/build/outputs/apk/release -name "*.apk" | head -1)
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
+      - name: Build Release AAB
+        if: env.BUILD_TYPE == 'html'
+        working-directory: webviewCatatUang
+        run: ./gradlew bundleRelease --no-daemon
+
+      - name: Find AAB file
+        id: find_aab
+        if: env.BUILD_TYPE == 'html'
+        run: |
+          AAB_PATH=$(find webviewCatatUang/app/build/outputs/bundle/release -name "*.aab" | head -1)
+          echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
 
       - name: Upload APK to R2
         env:
@@ -568,13 +632,53 @@ jobs:
           aws s3 cp "${{ steps.find_apk.outputs.apk_path }}" "s3://${R2_BUCKET}/${APK_KEY}" --endpoint-url "$R2_ENDPOINT"
           echo "apk_key=$APK_KEY" >> $GITHUB_ENV
 
+      - name: Upload AAB to R2
+        if: env.BUILD_TYPE == 'html'
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          pip install awscli
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+          AAB_KEY="aabs/${GENERATE_ID}.aab"
+          aws s3 cp "${{ steps.find_aab.outputs.aab_path }}" "s3://${R2_BUCKET}/${AAB_KEY}" --endpoint-url "$R2_ENDPOINT"
+          echo "aab_key=$AAB_KEY" >> $GITHUB_ENV
+
+      - name: Upload keystore to R2
+        if: env.BUILD_TYPE == 'html'
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          pip install awscli
+          aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+          aws configure set default.region auto
+          KEYSTORE_KEY="keystores/${GENERATE_ID}/keystore.jks"
+          aws s3 cp webviewCatatUang/app/release-keystore.jks "s3://${R2_BUCKET}/${KEYSTORE_KEY}" --endpoint-url "$R2_ENDPOINT"
+          echo "keystore_key=$KEYSTORE_KEY" >> $GITHUB_ENV
+
       - name: Call success callback
         if: success()
         env:
           WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
         run: |
+          PAYLOAD="{\"generate_id\": \"$GENERATE_ID\", \"status\": \"success\", \"apk_key\": \"$apk_key\""
+          if [ -n "$aab_key" ]; then
+            PAYLOAD="$PAYLOAD, \"aab_key\": \"$aab_key\""
+          fi
+          if [ -n "$keystore_key" ]; then
+            PAYLOAD="$PAYLOAD, \"keystore_key\": \"$keystore_key\""
+          fi
+          PAYLOAD="$PAYLOAD}"
           curl -X POST "$CALLBACK_URL" -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
-            -d "{\"generate_id\": \"$GENERATE_ID\", \"status\": \"success\", \"apk_key\": \"$apk_key\"}"
+            -d "$PAYLOAD"
 
       - name: Call failure callback
         if: failure()

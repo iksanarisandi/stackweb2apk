@@ -123,19 +123,19 @@ export const registrationRateLimit = rateLimiter({
   keyPrefix: 'rl:register',
 });
 
-// Generate APK rate limit: 5 per hour per user
+// Generate APK rate limit: 50 per hour per user (increased for testing)
 // Combined with Turnstile CAPTCHA and payment requirement for abuse prevention
 export const generateRateLimit = rateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 5,
+  maxRequests: 50,
   keyPrefix: 'rl:generate',
 });
 
-// Generate APK rate limit by IP: 10 per hour per IP
+// Generate APK rate limit by IP: 100 per hour per IP (increased for testing)
 // Additional layer to prevent abuse from multiple accounts on same IP
 export const generateIpRateLimit = rateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 10,
+  maxRequests: 100,
   keyPrefix: 'rl:generate:ip',
 });
 

@@ -2,7 +2,7 @@
 
 import { useState, useRef, FormEvent, ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { getToken, getUser, Turnstile, useTurnstile } from '@/lib';
+import { getToken, getUser, Turnstile, useTurnstile, API_BASE_URL } from '@/lib';
 import { generateWhatsAppUrl } from '@web2apk/shared';
 import PaymentModal from './PaymentModal';
 
@@ -14,6 +14,7 @@ interface GenerateResponse {
     id: string;
     amount: number;
   };
+  build_type: string;
 }
 
 interface FieldErrors {
@@ -21,18 +22,23 @@ interface FieldErrors {
   app_name?: string;
   package_name?: string;
   icon?: string;
+  html_files?: string;
 }
 
 export default function GenerateFormPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
+  const [buildType, setBuildType] = useState<'webview' | 'html'>('webview');
   const [url, setUrl] = useState('');
   const [appName, setAppName] = useState('');
   const [packageName, setPackageName] = useState('');
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [htmlZipFile, setHtmlZipFile] = useState<File | null>(null);
+  const [htmlZipName, setHtmlZipName] = useState<string>('');
   const [enableGps, setEnableGps] = useState(false);
   const [enableCamera, setEnableCamera] = useState(false);
 
@@ -52,17 +58,24 @@ export default function GenerateFormPage() {
   const validateForm = (): boolean => {
     const errors: FieldErrors = {};
 
-    // URL validation - must be HTTPS (Requirement 3.2)
-    if (!url) {
-      errors.url = 'URL wajib diisi';
-    } else if (!url.startsWith('https://')) {
-      errors.url = 'URL harus menggunakan HTTPS';
-    } else {
-      try {
-        new URL(url);
-      } catch {
-        errors.url = 'Format URL tidak valid';
+    // URL validation - required for WebView (Requirement 3.2)
+    if (buildType === 'webview') {
+      if (!url) {
+        errors.url = 'URL wajib diisi untuk WebView';
+      } else if (!url.startsWith('https://')) {
+        errors.url = 'URL harus menggunakan HTTPS';
+      } else {
+        try {
+          new URL(url);
+        } catch {
+          errors.url = 'Format URL tidak valid';
+        }
       }
+    }
+
+    // HTML ZIP validation - required for HTML View
+    if (buildType === 'html' && !htmlZipFile) {
+      errors.html_files = 'File HTML (ZIP) wajib diupload untuk HTML View';
     }
 
     // App name validation
@@ -125,6 +138,16 @@ export default function GenerateFormPage() {
     img.src = URL.createObjectURL(file);
   };
 
+  // Handle HTML ZIP file selection
+  const handleHtmlZipChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setHtmlZipFile(file);
+    setHtmlZipName(file.name);
+    setFieldErrors((prev) => ({ ...prev, html_files: undefined }));
+  };
+
   // Handle form submission
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -150,7 +173,10 @@ export default function GenerateFormPage() {
     try {
       // Create FormData for multipart upload
       const formData = new FormData();
-      formData.append('url', url);
+      formData.append('build_type', buildType);
+      if (buildType === 'webview') {
+        formData.append('url', url);
+      }
       formData.append('app_name', appName);
       formData.append('package_name', packageName);
       formData.append('turnstile_token', turnstileToken);
@@ -159,8 +185,11 @@ export default function GenerateFormPage() {
       if (iconFile) {
         formData.append('icon', iconFile);
       }
+      if (buildType === 'html' && htmlZipFile) {
+        formData.append('html_files', htmlZipFile);
+      }
 
-      const response = await fetch('https://web2apk-api.threadsauto.workers.dev/api/generate', {
+      const response = await fetch(`${API_BASE_URL}/api/generate`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -213,6 +242,8 @@ export default function GenerateFormPage() {
     router.push('/dashboard');
   };
 
+  const price = buildType === 'html' ? 75000 : 35000;
+
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
@@ -229,30 +260,101 @@ export default function GenerateFormPage() {
           </div>
         )}
 
-        {/* URL Input (Requirement 3.1, 3.2) */}
+        {/* Build Type Selection */}
         <div>
-          <label htmlFor="url" className="label">
-            URL Website <span className="text-red-500">*</span>
+          <label className="label">
+            Tipe Build <span className="text-red-500">*</span>
           </label>
-          <input
-            id="url"
-            type="url"
-            value={url}
-            onChange={(e) => {
-              setUrl(e.target.value);
-              setFieldErrors((prev) => ({ ...prev, url: undefined }));
-            }}
-            className={`input ${fieldErrors.url ? 'input-error' : ''}`}
-            placeholder="https://example.com"
-          />
-          {fieldErrors.url ? (
-            <p className="mt-1 text-sm text-red-600">{fieldErrors.url}</p>
-          ) : (
-            <p className="mt-1 text-sm text-gray-500">
-              URL harus menggunakan HTTPS
-            </p>
-          )}
+          <div className="grid grid-cols-2 gap-4 mt-2">
+            {/* WebView Option */}
+            <label className={`relative flex flex-col p-4 rounded-lg border-2 cursor-pointer transition-colors
+              ${buildType === 'webview' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}>
+              <input type="radio" name="build_type" value="webview" checked={buildType === 'webview'}
+                onChange={() => setBuildType('webview')} className="sr-only" />
+              <div className="flex items-center gap-3">
+                <GlobeIcon className="w-6 h-6 text-blue-600" />
+                <div>
+                  <div className="font-semibold">WebView</div>
+                  <div className="text-sm text-gray-500">Muat website dari URL</div>
+                </div>
+              </div>
+              {buildType === 'webview' && <div className="mt-3 text-sm font-medium text-blue-600">Rp35.000</div>}
+            </label>
+
+            {/* HTML View Option */}
+            <label className={`relative flex flex-col p-4 rounded-lg border-2 cursor-pointer transition-colors
+              ${buildType === 'html' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-purple-300'}`}>
+              <input type="radio" name="build_type" value="html" checked={buildType === 'html'}
+                onChange={() => setBuildType('html')} className="sr-only" />
+              <div className="flex items-center gap-3">
+                <CodeIcon className="w-6 h-6 text-purple-600" />
+                <div>
+                  <div className="font-semibold">HTML View</div>
+                  <div className="text-sm text-gray-500">Upload file HTML sendiri</div>
+                </div>
+              </div>
+              {buildType === 'html' && <div className="mt-3 text-sm font-medium text-purple-600">Rp75.000</div>}
+            </label>
+          </div>
         </div>
+
+        {/* URL Input (only for WebView) */}
+        {buildType === 'webview' && (
+          <div>
+            <label htmlFor="url" className="label">
+              URL Website <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="url"
+              type="url"
+              value={url}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, url: undefined }));
+              }}
+              className={`input ${fieldErrors.url ? 'input-error' : ''}`}
+              placeholder="https://example.com"
+            />
+            {fieldErrors.url ? (
+              <p className="mt-1 text-sm text-red-600">{fieldErrors.url}</p>
+            ) : (
+              <p className="mt-1 text-sm text-gray-500">
+                URL harus menggunakan HTTPS
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* HTML ZIP Upload (only for HTML View) */}
+        {buildType === 'html' && (
+          <div>
+            <label className="label">File HTML (ZIP) <span className="text-red-500">*</span></label>
+            <input ref={zipInputRef} type="file" accept=".zip" onChange={handleHtmlZipChange} className="hidden" />
+            <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-purple-400 transition-colors"
+              onClick={() => zipInputRef.current?.click()}>
+              <UploadIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+              <p className="text-sm font-medium text-gray-900 mb-1">
+                Klik untuk upload file ZIP
+              </p>
+              <p className="text-xs text-gray-500 mb-3">
+                Maksimal 10MB, harus mengandung index.html di root
+              </p>
+              {htmlZipName && (
+                <p className="text-sm font-medium text-purple-600">
+                  {htmlZipName}
+                </p>
+              )}
+            </div>
+            {fieldErrors.html_files && (
+              <p className="mt-1 text-sm text-red-600">{fieldErrors.html_files}</p>
+            )}
+            {buildType === 'html' && !fieldErrors.html_files && (
+              <p className="mt-2 text-sm text-gray-500">
+                ZIP akan diekstrak ke assets. Pastikan index.html berada di root level.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* App Name Input */}
         <div>
@@ -415,16 +517,21 @@ export default function GenerateFormPage() {
         </div>
 
         {/* Price Info */}
-        <div className="bg-blue-50 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${buildType === 'html' ? 'bg-purple-50' : 'bg-blue-50'}`}>
           <div className="flex items-center">
-            <InfoIcon className="w-5 h-5 text-blue-600 mr-3 flex-shrink-0" />
+            <InfoIcon className={`w-5 h-5 mr-3 flex-shrink-0 ${buildType === 'html' ? 'text-purple-600' : 'text-blue-600'}`} />
             <div>
-              <p className="text-sm font-medium text-blue-900">
-                Biaya Generate: Rp35.000
+              <p className={`text-sm font-medium ${buildType === 'html' ? 'text-purple-900' : 'text-blue-900'}`}>
+                Biaya Generate: Rp{price.toLocaleString('id-ID')}
               </p>
-              <p className="text-sm text-blue-700">
+              <p className={`text-sm ${buildType === 'html' ? 'text-purple-700' : 'text-blue-700'}`}>
                 Pembayaran via QRIS setelah submit form
               </p>
+              {buildType === 'html' && (
+                <p className="text-sm text-purple-600 mt-1">
+                  Termasuk AAB (Android App Bundle) untuk Play Store dan keystore unik
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -506,6 +613,22 @@ function CameraIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function GlobeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+    </svg>
+  );
+}
+
+function CodeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
     </svg>
   );
 }

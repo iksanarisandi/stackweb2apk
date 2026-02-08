@@ -140,6 +140,51 @@ app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
   });
 });
 
+// HTML files endpoint for GitHub Actions
+app.get('/api/html-files/:generateId', iconRateLimit, async (c) => {
+  const generateId = c.req.param('generateId');
+
+  if (!generateId) {
+    return c.json({ error: 'Generate ID is required' }, 400);
+  }
+
+  const uuidRegex = /^[0-9a-f]{32}$/i;
+  if (!uuidRegex.test(generateId)) {
+    return c.json({ error: 'Invalid generate ID format' }, 400);
+  }
+
+  const result = await c.env.DB.prepare(
+    `SELECT html_files_key, status, build_type FROM generates WHERE id = ?`
+  )
+    .bind(generateId)
+    .first<{ html_files_key: string | null; status: string; build_type: string }>();
+
+  if (!result || !result.html_files_key) {
+    return c.json({ error: 'HTML files not found' }, 404);
+  }
+
+  if (result.status !== 'building') {
+    return c.json({ error: 'HTML files access not allowed' }, 403);
+  }
+
+  if (result.build_type !== 'html') {
+    return c.json({ error: 'HTML files only available for HTML View builds' }, 400);
+  }
+
+  const htmlFilesObject = await c.env.STORAGE.get(result.html_files_key);
+  if (!htmlFilesObject) {
+    return c.json({ error: 'HTML files not found in storage' }, 404);
+  }
+
+  return new Response(htmlFilesObject.body, {
+    headers: {
+      'Content-Type': 'application/zip',
+      'Content-Length': htmlFilesObject.size.toString(),
+      'Cache-Control': 'private, no-store',
+    },
+  });
+});
+
 app.route('/api/admin', adminRoutes);
 
 app.route('/api/webhook', webhookRoutes);

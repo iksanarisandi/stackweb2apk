@@ -63,15 +63,19 @@ admin.post('/payments/:id/confirm', async (c) => {
 
   // Get payment with generate details
   const payment = await c.env.DB.prepare(
-    `SELECT 
+    `SELECT
       p.id,
       p.user_id,
       p.generate_id,
       p.status,
       g.url,
+      g.build_type,
       g.app_name,
       g.package_name,
       g.icon_key,
+      g.html_files_key,
+      g.keystore_password,
+      g.keystore_alias,
       g.enable_gps,
       g.enable_camera,
       u.email as user_email
@@ -86,10 +90,14 @@ admin.post('/payments/:id/confirm', async (c) => {
       user_id: string;
       generate_id: string;
       status: string;
-      url: string;
+      url: string | null;
+      build_type: string;
       app_name: string;
       package_name: string;
       icon_key: string;
+      html_files_key: string | null;
+      keystore_password: string | null;
+      keystore_alias: string | null;
       enable_gps: number;
       enable_camera: number;
       user_email: string;
@@ -127,10 +135,15 @@ admin.post('/payments/:id/confirm', async (c) => {
     .bind(payment.generate_id)
     .run();
 
-  // Generate API URL for icon download (GitHub Actions will use this)
-  // Using public icon endpoint (no auth required)
+  // Generate API URLs for GitHub Actions
   const baseUrl = new URL(c.req.url).origin;
   const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
+
+  // Generate HTML files URL if applicable
+  let htmlFilesUrl: string | undefined;
+  if (payment.build_type === 'html' && payment.html_files_key) {
+    htmlFilesUrl = `${baseUrl}/api/html-files/${payment.generate_id}`;
+  }
 
   // Trigger GitHub Actions workflow via repository dispatch (Requirement 5.4)
   // The callback URL will be called by GitHub Actions when build completes
@@ -152,9 +165,13 @@ admin.post('/payments/:id/confirm', async (c) => {
           client_payload: {
             generate_id: payment.generate_id,
             url: payment.url,
+            build_type: payment.build_type,
             app_name: payment.app_name,
             package_name: payment.package_name,
             icon_url: iconUrl,
+            html_files_url: htmlFilesUrl,
+            keystore_password: payment.keystore_password,
+            keystore_alias: payment.keystore_alias,
             callback_url: callbackUrl,
             enable_gps: Boolean(payment.enable_gps),
             enable_camera: Boolean(payment.enable_camera),
@@ -270,15 +287,19 @@ admin.post('/payments/:id/retry-build', async (c) => {
   }
 
   const payment = await c.env.DB.prepare(
-    `SELECT 
+    `SELECT
       p.id,
       p.user_id,
       p.generate_id,
       p.status as payment_status,
       g.url,
+      g.build_type,
       g.app_name,
       g.package_name,
       g.icon_key,
+      g.html_files_key,
+      g.keystore_password,
+      g.keystore_alias,
       g.enable_gps,
       g.enable_camera,
       g.status as generate_status
@@ -292,10 +313,14 @@ admin.post('/payments/:id/retry-build', async (c) => {
       user_id: string;
       generate_id: string;
       payment_status: string;
-      url: string;
+      url: string | null;
+      build_type: string;
       app_name: string;
       package_name: string;
       icon_key: string;
+      html_files_key: string | null;
+      keystore_password: string | null;
+      keystore_alias: string | null;
       enable_gps: number;
       enable_camera: number;
       generate_status: string;
@@ -329,6 +354,13 @@ admin.post('/payments/:id/retry-build', async (c) => {
 
   const baseUrl = new URL(c.req.url).origin;
   const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
+
+  // Generate HTML files URL if applicable
+  let htmlFilesUrl: string | undefined;
+  if (payment.build_type === 'html' && payment.html_files_key) {
+    htmlFilesUrl = `${baseUrl}/api/html-files/${payment.generate_id}`;
+  }
+
   const callbackUrl = new URL('/api/webhook/build-complete', c.req.url).toString();
 
   try {
@@ -347,9 +379,13 @@ admin.post('/payments/:id/retry-build', async (c) => {
           client_payload: {
             generate_id: payment.generate_id,
             url: payment.url,
+            build_type: payment.build_type,
             app_name: payment.app_name,
             package_name: payment.package_name,
             icon_url: iconUrl,
+            html_files_url: htmlFilesUrl,
+            keystore_password: payment.keystore_password,
+            keystore_alias: payment.keystore_alias,
             callback_url: callbackUrl,
             enable_gps: Boolean(payment.enable_gps),
             enable_camera: Boolean(payment.enable_camera),

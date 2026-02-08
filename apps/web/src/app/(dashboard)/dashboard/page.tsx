@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { authApiRequest, getToken } from '@/lib';
-import type { Generate, GenerateStatus } from '@web2apk/shared';
+import type { Generate, GenerateStatus, BuildType } from '@web2apk/shared';
+import KeystoreDownloadModal from './generate/KeystoreDownloadModal';
 
 interface GeneratesResponse {
   generates: Generate[];
@@ -12,6 +13,7 @@ interface GeneratesResponse {
 interface DownloadResponse {
   download_url: string;
   expires_at: string;
+  aab_download_url?: string;
 }
 
 // Status badge component (Requirements 8.2, 8.3, 8.4, 8.5)
@@ -26,6 +28,16 @@ function StatusBadge({ status }: { status: GenerateStatus }) {
 
   const config = statusConfig[status];
   return <span className={config.className}>{config.label}</span>;
+}
+
+// Build type badge component
+function BuildTypeBadge({ buildType }: { buildType: BuildType }) {
+  const config = {
+    webview: { label: 'WebView', className: 'badge-webview' },
+    html: { label: 'HTML View', className: 'badge-html' },
+  };
+  const typeConfig = config[buildType];
+  return <span className={typeConfig.className}>{typeConfig.label}</span>;
 }
 
 // Format date to Indonesian locale
@@ -44,6 +56,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [keystoreModalId, setKeystoreModalId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchGenerates();
@@ -147,9 +160,19 @@ export default function DashboardPage() {
               generate={generate}
               onDownload={handleDownload}
               isDownloading={downloadingId === generate.id}
+              onKeystoreDownload={(id) => setKeystoreModalId(id)}
             />
           ))}
         </div>
+      )}
+
+      {/* Keystore Download Modal */}
+      {keystoreModalId && (
+        <KeystoreDownloadModal
+          generateId={keystoreModalId}
+          isOpen={!!keystoreModalId}
+          onClose={() => setKeystoreModalId(null)}
+        />
       )}
     </div>
   );
@@ -161,26 +184,43 @@ function GenerateCard({
   generate,
   onDownload,
   isDownloading,
+  onKeystoreDownload,
 }: {
   generate: Generate;
   onDownload: (id: string) => void;
   isDownloading: boolean;
+  onKeystoreDownload: (id: string) => void;
 }) {
+  // Type assertion for extended fields that may exist on Generate from API
+  const buildType = (generate as { build_type?: BuildType }).build_type;
+  const aabKey = (generate as { aab_key?: string | null }).aab_key;
+  const keystoreAlias = (generate as { keystore_alias?: string | null }).keystore_alias;
+  const amount = (generate as { amount?: number }).amount;
+
+  const isHtmlView = buildType === 'html';
+  const hasAab = !!aabKey;
+  const hasKeystore = isHtmlView && !!keystoreAlias;
+
   return (
     <div className="card">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-2 flex-wrap mb-2">
             <h3 className="text-lg font-semibold text-gray-900 truncate">
               {generate.app_name}
             </h3>
             <StatusBadge status={generate.status} />
+            {buildType && (
+              <BuildTypeBadge buildType={buildType} />
+            )}
           </div>
-          
+
           <div className="space-y-1 text-sm text-gray-600">
-            <p className="truncate">
-              <span className="font-medium">URL:</span> {generate.url}
-            </p>
+            {generate.url && (
+              <p className="truncate">
+                <span className="font-medium">URL:</span> {generate.url}
+              </p>
+            )}
             <p>
               <span className="font-medium">Package:</span> {generate.package_name}
             </p>
@@ -192,7 +232,26 @@ function GenerateCard({
                 <span className="font-medium">Download:</span> {generate.download_count}x
               </p>
             )}
+            {isHtmlView && amount && (
+              <p>
+                <span className="font-medium">Biaya:</span> Rp{amount.toLocaleString('id-ID')}
+              </p>
+            )}
           </div>
+
+          {/* HTML View specific info */}
+          {isHtmlView && generate.status === 'ready' && (
+            <div className="mt-3 p-3 bg-purple-50 rounded-lg">
+              <p className="text-sm font-medium text-purple-900 mb-1">
+                HTML View Build - Download Tersedia:
+              </p>
+              <ul className="text-sm text-purple-700 space-y-1">
+                <li>• APK untuk instalasi manual</li>
+                <li>• AAB untuk Google Play Store</li>
+                <li>• Keystore untuk update aplikasi</li>
+              </ul>
+            </div>
+          )}
 
           {/* Error message for failed builds (Requirement 8.5) */}
           {generate.status === 'failed' && generate.error_message && (
@@ -226,26 +285,51 @@ function GenerateCard({
           )}
         </div>
 
-        {/* Download button for ready APKs (Requirement 8.4) */}
-        <div className="flex-shrink-0">
+        {/* Download buttons for ready APKs (Requirement 8.4) */}
+        <div className="flex-shrink-0 flex flex-col gap-2 w-full sm:w-auto">
           {generate.status === 'ready' && (
-            <button
-              onClick={() => onDownload(generate.id)}
-              disabled={isDownloading}
-              className="btn-success w-full sm:w-auto"
-            >
-              {isDownloading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Memproses...
-                </>
-              ) : (
-                <>
+            <>
+              <button
+                onClick={() => onDownload(generate.id)}
+                disabled={isDownloading}
+                className="btn-success w-full sm:w-auto"
+              >
+                {isDownloading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Memproses...
+                  </>
+                ) : (
+                  <>
+                    <DownloadIcon className="w-5 h-5 mr-2" />
+                    Download APK
+                  </>
+                )}
+              </button>
+
+              {/* AAB download button for HTML View */}
+              {hasAab && (
+                <button
+                  onClick={() => onDownload(generate.id)}
+                  disabled={isDownloading}
+                  className="btn-secondary w-full sm:w-auto border-purple-500 text-purple-700 hover:bg-purple-50"
+                >
                   <DownloadIcon className="w-5 h-5 mr-2" />
-                  Download APK
-                </>
+                  Download AAB
+                </button>
               )}
-            </button>
+
+              {/* Keystore download button for HTML View */}
+              {hasKeystore && (
+                <button
+                  onClick={() => onKeystoreDownload(generate.id)}
+                  className="btn-secondary w-full sm:w-auto border-yellow-500 text-yellow-700 hover:bg-yellow-50"
+                >
+                  <KeyIcon className="w-5 h-5 mr-2" />
+                  Download Keystore
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -274,6 +358,14 @@ function EmptyIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+    </svg>
+  );
+}
+
+function KeyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
     </svg>
   );
 }

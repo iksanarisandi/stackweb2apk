@@ -12,6 +12,8 @@ interface BuildCallbackPayload {
   generate_id: string;
   status: 'success' | 'failed';
   apk_key?: string;
+  aab_key?: string;
+  keystore_key?: string;
   error_message?: string;
 }
 
@@ -85,11 +87,11 @@ webhook.post('/build-complete', webhookRateLimit, async (c) => {
     }
 
     await c.env.DB.prepare(
-      `UPDATE generates 
-       SET status = 'ready', apk_key = ?, completed_at = ?
+      `UPDATE generates
+       SET status = 'ready', apk_key = ?, aab_key = ?, keystore_key = ?, completed_at = ?
        WHERE id = ?`
     )
-      .bind(body.apk_key, now, body.generate_id)
+      .bind(body.apk_key, body.aab_key || null, body.keystore_key || null, now, body.generate_id)
       .run();
 
     return c.json({

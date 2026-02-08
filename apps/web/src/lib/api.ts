@@ -2,7 +2,7 @@
  * API client utilities for Web2APK frontend
  */
 
-const API_BASE_URL = 'https://web2apk-api.threadsauto.workers.dev';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://web2apk-api.threadsauto.workers.dev';
 
 export interface ApiError {
   error: string;
