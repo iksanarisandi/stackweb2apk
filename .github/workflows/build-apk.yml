@@ -576,8 +576,11 @@ jobs:
         run: |
           if [ "$BUILD_TYPE" = "html" ]; then
             # Generate per-project keystore for HTML builds
+            # Use default alias if not provided
+            KEYSTORE_ALIAS_VALUE="${KEYSTORE_ALIAS:-release}"
+
             keytool -genkeypair \
-              -alias "$KEYSTORE_ALIAS" \
+              -alias "$KEYSTORE_ALIAS_VALUE" \
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
@@ -585,7 +588,7 @@ jobs:
               -storepass "$KEYSTORE_PASSWORD" \
               -keypass "$KEYSTORE_PASSWORD" \
               -dname "CN=$APP_NAME, OU=Development, O=Web2APK, C=ID"
-            echo "Per-project keystore generated for HTML build"
+            echo "Per-project keystore generated for HTML build (alias: $KEYSTORE_ALIAS_VALUE)"
           else
             # Decode shared keystore for WebView builds
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > webviewCatatUang/app/release-keystore.jks
