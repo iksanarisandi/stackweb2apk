@@ -186,6 +186,7 @@ export default function KeystoreDownloadModal({ generateId, isOpen, onClose }: K
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Password Keystore
+                  <span className="text-xs font-normal text-gray-500 ml-2">(digunakan untuk keystore dan key)</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 bg-gray-100 px-3 py-2 rounded text-sm font-mono">
@@ -220,8 +221,14 @@ export default function KeystoreDownloadModal({ generateId, isOpen, onClose }: K
 
               {/* Info about keystore */}
               <div className="rounded-md bg-blue-50 p-4">
-                <p className="text-sm text-blue-800">
-                  <strong>Tips:</strong> Simpan file keystore (.jks) dan password di tempat yang aman. Anda akan memerlukannya untuk:
+                <p className="text-sm font-medium text-blue-900 mb-2">📋 Yang Anda Dapatkan:</p>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>✅ File Keystore (.jks) - untuk signing aplikasi</li>
+                  <li>✅ Password - untuk membuka keystore (sama dengan key password)</li>
+                  <li>✅ Key Alias - nama kunci di dalam keystore</li>
+                </ul>
+                <p className="text-sm text-blue-700 mt-3">
+                  <strong>Tips:</strong> Simpan ketiga hal di atas di tempat yang aman. Anda akan memerlukannya untuk:
                 </p>
                 <ul className="text-sm text-blue-700 mt-2 list-disc list-inside space-y-1">
                   <li>Upload update aplikasi ke Play Store</li>
