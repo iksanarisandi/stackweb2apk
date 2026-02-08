@@ -27,6 +27,7 @@ export default function KeystoreDownloadModal({ generateId, isOpen, onClose }: K
   const [error, setError] = useState<string | null>(null);
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [copiedAlias, setCopiedAlias] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const fetchKeystoreInfo = useCallback(async () => {
     const token = getToken();
@@ -64,9 +65,57 @@ export default function KeystoreDownloadModal({ generateId, isOpen, onClose }: K
     }
   }, [isOpen, generateId, fetchKeystoreInfo]);
 
-  const handleDownloadKeystore = () => {
+  const handleDownloadKeystore = async () => {
     if (!keystoreInfo) return;
-    window.open(keystoreInfo.keystore_url, '_blank');
+
+    setIsDownloading(true);
+    const token = getToken();
+    if (!token) {
+      alert('Session expired. Silakan login ulang.');
+      setIsDownloading(false);
+      return;
+    }
+
+    try {
+      // Download file with authentication
+      const response = await fetch(keystoreInfo.keystore_url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download keystore file');
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${keystoreInfo.app_name.replace(/[^a-zA-Z0-9-_]/g, '_')}-keystore.jks`;
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '');
+        }
+      }
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Gagal mendownload file keystore. Silakan coba lagi.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const copyToClipboard = (text: string, type: 'password' | 'alias') => {
@@ -191,10 +240,20 @@ export default function KeystoreDownloadModal({ generateId, isOpen, onClose }: K
           {keystoreInfo && (
             <button
               onClick={handleDownloadKeystore}
-              className="btn-primary"
+              disabled={isDownloading}
+              className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <DownloadIcon className="w-5 h-5 mr-2" />
-              Download Keystore
+              {isDownloading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Downloading...
+                </>
+              ) : (
+                <>
+                  <DownloadIcon className="w-5 h-5 mr-2" />
+                  Download Keystore
+                </>
+              )}
             </button>
           )}
         </div>
