@@ -231,6 +231,10 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         g.app_name,
         g.package_name,
         g.icon_key,
+        g.build_type,
+        g.html_files_key,
+        g.keystore_password,
+        g.keystore_alias,
         g.enable_gps,
         g.enable_camera
       FROM payments p
@@ -247,6 +251,10 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         app_name: string;
         package_name: string;
         icon_key: string;
+        build_type: string;
+        html_files_key: string | null;
+        keystore_password: string | null;
+        keystore_alias: string | null;
         enable_gps: number;
         enable_camera: number;
       }>();
@@ -284,8 +292,6 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
       .run();
 
     const baseUrl = new URL(c.req.url).origin;
-    const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
-    const callbackUrl = new URL('/api/webhook/build-complete', c.req.url).toString();
 
     try {
       const githubResponse = await fetch(
@@ -302,11 +308,13 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
             event_type: 'build_apk',
             client_payload: {
               generate_id: payment.generate_id,
+              api_url: baseUrl,
               url: payment.url,
+              build_type: payment.build_type,
               app_name: payment.app_name,
               package_name: payment.package_name,
-              icon_url: iconUrl,
-              callback_url: callbackUrl,
+              keystore_password: payment.keystore_password,
+              keystore_alias: payment.keystore_alias,
               enable_gps: Boolean(payment.enable_gps),
               enable_camera: Boolean(payment.enable_camera),
             },
@@ -349,6 +357,10 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         g.app_name,
         g.package_name,
         g.icon_key,
+        g.build_type,
+        g.html_files_key,
+        g.keystore_password,
+        g.keystore_alias,
         g.enable_gps,
         g.enable_camera,
         g.status as generate_status
@@ -366,6 +378,10 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         app_name: string;
         package_name: string;
         icon_key: string;
+        build_type: string;
+        html_files_key: string | null;
+        keystore_password: string | null;
+        keystore_alias: string | null;
         enable_gps: number;
         enable_camera: number;
         generate_status: string;
@@ -399,8 +415,6 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
       .run();
 
     const baseUrl = new URL(c.req.url).origin;
-    const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
-    const callbackUrl = new URL('/api/webhook/build-complete', c.req.url).toString();
 
     try {
       const githubResponse = await fetch(
@@ -417,11 +431,13 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
             event_type: 'build_apk',
             client_payload: {
               generate_id: payment.generate_id,
+              api_url: baseUrl,
               url: payment.url,
+              build_type: payment.build_type,
               app_name: payment.app_name,
               package_name: payment.package_name,
-              icon_url: iconUrl,
-              callback_url: callbackUrl,
+              keystore_password: payment.keystore_password,
+              keystore_alias: payment.keystore_alias,
               enable_gps: Boolean(payment.enable_gps),
               enable_camera: Boolean(payment.enable_camera),
             },

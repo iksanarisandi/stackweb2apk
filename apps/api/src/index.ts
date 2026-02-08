@@ -122,7 +122,8 @@ app.get('/api/icon/:generateId', iconRateLimit, async (c) => {
     return c.json({ error: 'Icon not found' }, 404);
   }
 
-  if (result.status !== 'building') {
+  // Allow icon access for building and confirmed status (GitHub Actions might access shortly after dispatch)
+  if (result.status !== 'building' && result.status !== 'confirmed') {
     return c.json({ error: 'Icon access not allowed' }, 403);
   }
 
@@ -163,7 +164,8 @@ app.get('/api/html-files/:generateId', iconRateLimit, async (c) => {
     return c.json({ error: 'HTML files not found' }, 404);
   }
 
-  if (result.status !== 'building') {
+  // Allow HTML files access for building and confirmed status
+  if (result.status !== 'building' && result.status !== 'confirmed') {
     return c.json({ error: 'HTML files access not allowed' }, 403);
   }
 

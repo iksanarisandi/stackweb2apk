@@ -137,13 +137,6 @@ admin.post('/payments/:id/confirm', async (c) => {
 
   // Generate API URLs for GitHub Actions
   const baseUrl = new URL(c.req.url).origin;
-  const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
-
-  // Generate HTML files URL if applicable
-  let htmlFilesUrl: string | undefined;
-  if (payment.build_type === 'html' && payment.html_files_key) {
-    htmlFilesUrl = `${baseUrl}/api/html-files/${payment.generate_id}`;
-  }
 
   // Trigger GitHub Actions workflow via repository dispatch (Requirement 5.4)
   // The callback URL will be called by GitHub Actions when build completes
@@ -164,12 +157,11 @@ admin.post('/payments/:id/confirm', async (c) => {
           event_type: 'build_apk',
           client_payload: {
             generate_id: payment.generate_id,
+            api_url: baseUrl,
             url: payment.url,
             build_type: payment.build_type,
             app_name: payment.app_name,
             package_name: payment.package_name,
-            icon_url: iconUrl,
-            html_files_url: htmlFilesUrl,
             keystore_password: payment.keystore_password,
             keystore_alias: payment.keystore_alias,
             callback_url: callbackUrl,
@@ -353,14 +345,6 @@ admin.post('/payments/:id/retry-build', async (c) => {
     .run();
 
   const baseUrl = new URL(c.req.url).origin;
-  const iconUrl = `${baseUrl}/api/icon/${payment.generate_id}`;
-
-  // Generate HTML files URL if applicable
-  let htmlFilesUrl: string | undefined;
-  if (payment.build_type === 'html' && payment.html_files_key) {
-    htmlFilesUrl = `${baseUrl}/api/html-files/${payment.generate_id}`;
-  }
-
   const callbackUrl = new URL('/api/webhook/build-complete', c.req.url).toString();
 
   try {
@@ -378,12 +362,11 @@ admin.post('/payments/:id/retry-build', async (c) => {
           event_type: 'build_apk',
           client_payload: {
             generate_id: payment.generate_id,
+            api_url: baseUrl,
             url: payment.url,
             build_type: payment.build_type,
             app_name: payment.app_name,
             package_name: payment.package_name,
-            icon_url: iconUrl,
-            html_files_url: htmlFilesUrl,
             keystore_password: payment.keystore_password,
             keystore_alias: payment.keystore_alias,
             callback_url: callbackUrl,
