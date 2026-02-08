@@ -84,8 +84,8 @@ export default function DashboardPage() {
     }
   };
 
-  // Handle APK download (Requirement 7.1, 7.2)
-  const handleDownload = async (generateId: string) => {
+  // Handle APK/AAB download (Requirement 7.1, 7.2)
+  const handleDownload = async (generateId: string, type: 'apk' | 'aab' = 'apk') => {
     const token = getToken();
     if (!token) return;
 
@@ -105,10 +105,16 @@ export default function DashboardPage() {
     }
 
     if (data) {
-      // Open download URL in new tab
-      window.open(data.download_url, '_blank');
-      // Refresh to update download count
-      fetchGenerates();
+      // Open download URL in new tab based on type
+      const url = type === 'aab' ? data.aab_download_url : data.download_url;
+      
+      if (url) {
+        window.open(url, '_blank');
+        // Refresh to update download count
+        fetchGenerates();
+      } else {
+        alert('Download URL not available for this file type');
+      }
     }
   };
 
@@ -187,7 +193,7 @@ function GenerateCard({
   onKeystoreDownload,
 }: {
   generate: Generate;
-  onDownload: (id: string) => void;
+  onDownload: (id: string, type: 'apk' | 'aab') => void;
   isDownloading: boolean;
   onKeystoreDownload: (id: string) => void;
 }) {
@@ -290,7 +296,7 @@ function GenerateCard({
           {generate.status === 'ready' && (
             <>
               <button
-                onClick={() => onDownload(generate.id)}
+                onClick={() => onDownload(generate.id, 'apk')}
                 disabled={isDownloading}
                 className="btn-success w-full sm:w-auto"
               >
@@ -310,7 +316,7 @@ function GenerateCard({
               {/* AAB download button for HTML View */}
               {hasAab && (
                 <button
-                  onClick={() => onDownload(generate.id)}
+                  onClick={() => onDownload(generate.id, 'aab')}
                   disabled={isDownloading}
                   className="btn-secondary w-full sm:w-auto border-purple-500 text-purple-700 hover:bg-purple-50"
                 >
