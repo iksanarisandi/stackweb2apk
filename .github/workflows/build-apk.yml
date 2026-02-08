@@ -452,13 +452,19 @@ jobs:
 
           # Export variables for the build step
           if [ "$BUILD_TYPE" = "html" ]; then
+            # HTML builds: use per-project credentials from payload
+            if [ -z "$KEYSTORE_ALIAS" ]; then
+              echo "Error: KEYSTORE_ALIAS is required for HTML builds" >&2
+              exit 1
+            fi
             echo "APP_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
             echo "APP_KEY_ALIAS=$KEYSTORE_ALIAS" >> $GITHUB_ENV
             echo "APP_KEY_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
           else
-            echo "APP_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD_SHARED" >> $GITHUB_ENV
-            echo "APP_KEY_ALIAS=$KEY_ALIAS_SHARED" >> $GITHUB_ENV
-            echo "APP_KEY_PASSWORD=$KEY_PASSWORD_SHARED" >> $GITHUB_ENV
+            # WebView builds: use shared keystore from secrets (not from payload)
+            echo "APP_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "APP_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+            echo "APP_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
           fi
 
       - name: Replace AndroidManifest.xml
