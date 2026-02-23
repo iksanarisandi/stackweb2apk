@@ -19,6 +19,7 @@ env:
   VERSION_NAME: ${{ github.event.client_payload.version_name }}
   KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password }}
   KEYSTORE_ALIAS: ${{ github.event.client_payload.keystore_alias }}
+  KEYSTORE_KEY: ${{ github.event.client_payload.keystore_key }}
   ENABLE_GPS: ${{ github.event.client_payload.enable_gps }}
   ENABLE_CAMERA: ${{ github.event.client_payload.enable_camera }}
 
@@ -580,22 +581,37 @@ jobs:
           EOF
 
       - name: Generate per-project keystore or decode shared keystore
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
           if [ "$BUILD_TYPE" = "html" ]; then
-            # Generate per-project keystore for HTML builds
-            # Use default alias if not provided
-            KEYSTORE_ALIAS_VALUE="${KEYSTORE_ALIAS:-release}"
+            # For HTML builds: check if keystore already exists (rebuild) or generate new one (first build)
+            if [ -n "$KEYSTORE_KEY" ]; then
+              # Download existing keystore from R2 (for rebuild with same signature)
+              pip install awscli
+              aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+              aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+              aws configure set default.region auto
+              aws s3 cp "s3://${R2_BUCKET}/${KEYSTORE_KEY}" webviewCatatUang/app/release-keystore.jks --endpoint-url "$R2_ENDPOINT"
+              echo "Downloaded existing keystore for rebuild (key: $KEYSTORE_KEY)"
+            else
+              # Generate new keystore for first build
+              KEYSTORE_ALIAS_VALUE="${KEYSTORE_ALIAS:-release}"
 
-            keytool -genkeypair \
-              -alias "$KEYSTORE_ALIAS_VALUE" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -keystore webviewCatatUang/app/release-keystore.jks \
-              -storepass "$KEYSTORE_PASSWORD" \
-              -keypass "$KEYSTORE_PASSWORD" \
-              -dname "CN=$APP_NAME, OU=Development, O=Web2APK, C=ID"
-            echo "Per-project keystore generated for HTML build (alias: $KEYSTORE_ALIAS_VALUE)"
+              keytool -genkeypair \
+                -alias "$KEYSTORE_ALIAS_VALUE" \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -keystore webviewCatatUang/app/release-keystore.jks \
+                -storepass "$KEYSTORE_PASSWORD" \
+                -keypass "$KEYSTORE_PASSWORD" \
+                -dname "CN=$APP_NAME, OU=Development, O=Web2APK, C=ID"
+              echo "Generated new keystore for HTML build (alias: $KEYSTORE_ALIAS_VALUE)"
+            fi
           else
             # Decode shared keystore for WebView builds
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > webviewCatatUang/app/release-keystore.jks

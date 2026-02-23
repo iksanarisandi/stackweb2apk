@@ -367,6 +367,7 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         g.html_files_key,
         g.keystore_password,
         g.keystore_alias,
+        g.keystore_key,
         g.enable_gps,
         g.enable_camera,
         g.version_code,
@@ -390,6 +391,7 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         html_files_key: string | null;
         keystore_password: string | null;
         keystore_alias: string | null;
+        keystore_key: string | null;
         enable_gps: number;
         enable_camera: number;
         version_code: number;
@@ -452,6 +454,7 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
               enable_camera: Boolean(payment.enable_camera),
               version_code: payment.version_code || 1,
               version_name: payment.version_name || '1.0.0',
+              keystore_key: payment.keystore_key,
             },
           }),
         }

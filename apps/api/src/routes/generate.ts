@@ -944,7 +944,7 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
   const generate = await c.env.DB.prepare(
     `SELECT 
       g.id, g.user_id, g.url, g.build_type, g.app_name, g.package_name, 
-      g.icon_key, g.html_files_key, g.keystore_password, g.keystore_alias,
+      g.icon_key, g.html_files_key, g.keystore_password, g.keystore_alias, g.keystore_key,
       g.enable_gps, g.enable_camera, g.version_code, g.version_name, g.status,
       p.status as payment_status
     FROM generates g
@@ -963,6 +963,7 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
       html_files_key: string | null;
       keystore_password: string | null;
       keystore_alias: string | null;
+      keystore_key: string | null;
       enable_gps: number;
       enable_camera: number;
       version_code: number;
@@ -1025,6 +1026,7 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
             package_name: generate.package_name,
             keystore_password: generate.keystore_password,
             keystore_alias: generate.keystore_alias,
+            keystore_key: generate.keystore_key,
             enable_gps: Boolean(generate.enable_gps),
             enable_camera: Boolean(generate.enable_camera),
             version_code: newVersionCode,
