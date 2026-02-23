@@ -40,7 +40,7 @@ jobs:
           echo "VERSION_CODE=$(echo $CONFIG | jq -r '.version_code')" >> $GITHUB_ENV
           echo "VERSION_NAME=$(echo $CONFIG | jq -r '.version_name')" >> $GITHUB_ENV
           echo "KEYSTORE_ALIAS=$(echo $CONFIG | jq -r '.keystore_alias')" >> $GITHUB_ENV
-          echo "KEYSTORE_KEY=$(echo $CONFIG | jq -r '.keystore_key')" >> $GITHUB_ENV
+          echo "KEYSTORE_KEY=$(echo $CONFIG | jq -r '.keystore_key // empty')" >> $GITHUB_ENV
           echo "ENABLE_GPS=$(echo $CONFIG | jq -r '.enable_gps')" >> $GITHUB_ENV
           echo "ENABLE_CAMERA=$(echo $CONFIG | jq -r '.enable_camera')" >> $GITHUB_ENV
           
@@ -684,7 +684,7 @@ jobs:
           echo "aab_key=$AAB_KEY" >> $GITHUB_ENV
 
       - name: Upload keystore to R2
-        if: env.BUILD_TYPE == 'html'
+        if: env.BUILD_TYPE == 'html' && env.KEYSTORE_KEY == ''
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
