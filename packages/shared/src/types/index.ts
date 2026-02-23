@@ -29,6 +29,8 @@ export interface Generate {
   apk_key: string | null;
   aab_key: string | null;  // NEW
   amount: number;  // NEW
+  version_code: number;
+  version_name: string;
   status: GenerateStatus;
   error_message: string | null;
   download_count: number;
