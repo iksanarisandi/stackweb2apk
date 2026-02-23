@@ -1020,17 +1020,7 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
           client_payload: {
             generate_id: generateId,
             api_url: baseUrl,
-            url: generate.url,
-            build_type: generate.build_type,
-            app_name: generate.app_name,
-            package_name: generate.package_name,
             keystore_password: generate.keystore_password,
-            keystore_alias: generate.keystore_alias,
-            keystore_key: generate.keystore_key,
-            enable_gps: Boolean(generate.enable_gps),
-            enable_camera: Boolean(generate.enable_camera),
-            version_code: newVersionCode,
-            version_name: newVersionName,
           },
         }),
       }
@@ -1049,6 +1039,59 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
     version_code: newVersionCode,
     version_name: newVersionName,
     status: 'building',
+  });
+});
+
+generate.get('/:id/build-config', async (c) => {
+  const generateId = c.req.param('id');
+
+  if (!generateId) {
+    throw new HTTPException(400, {
+      message: 'Generate ID is required',
+    });
+  }
+
+  const generate = await c.env.DB.prepare(
+    `SELECT 
+      g.id, g.url, g.build_type, g.app_name, g.package_name,
+      g.keystore_alias, g.keystore_key,
+      g.enable_gps, g.enable_camera, g.version_code, g.version_name
+    FROM generates g
+    WHERE g.id = ?`
+  )
+    .bind(generateId)
+    .first<{
+      id: string;
+      url: string | null;
+      build_type: string;
+      app_name: string;
+      package_name: string;
+      keystore_alias: string | null;
+      keystore_key: string | null;
+      enable_gps: number;
+      enable_camera: number;
+      version_code: number;
+      version_name: string;
+    }>();
+
+  if (!generate) {
+    throw new HTTPException(404, {
+      message: 'Generate not found',
+    });
+  }
+
+  return c.json({
+    id: generate.id,
+    url: generate.url,
+    build_type: generate.build_type,
+    app_name: generate.app_name,
+    package_name: generate.package_name,
+    keystore_alias: generate.keystore_alias,
+    keystore_key: generate.keystore_key,
+    enable_gps: Boolean(generate.enable_gps),
+    enable_camera: Boolean(generate.enable_camera),
+    version_code: generate.version_code || 1,
+    version_name: generate.version_name || '1.0.0',
   });
 });
 

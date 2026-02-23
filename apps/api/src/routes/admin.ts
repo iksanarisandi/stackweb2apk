@@ -161,16 +161,7 @@ admin.post('/payments/:id/confirm', async (c) => {
           client_payload: {
             generate_id: payment.generate_id,
             api_url: baseUrl,
-            url: payment.url,
-            build_type: payment.build_type,
-            app_name: payment.app_name,
-            package_name: payment.package_name,
             keystore_password: payment.keystore_password,
-            keystore_alias: payment.keystore_alias,
-            enable_gps: Boolean(payment.enable_gps),
-            enable_camera: Boolean(payment.enable_camera),
-            version_code: payment.version_code || 1,
-            version_name: payment.version_name || '1.0.0',
           },
         }),
       }
@@ -355,7 +346,6 @@ admin.post('/payments/:id/retry-build', async (c) => {
     .run();
 
   const baseUrl = new URL(c.req.url).origin;
-  const callbackUrl = new URL('/api/webhook/build-complete', c.req.url).toString();
 
   try {
     const githubResponse = await fetch(
@@ -373,18 +363,7 @@ admin.post('/payments/:id/retry-build', async (c) => {
           client_payload: {
             generate_id: payment.generate_id,
             api_url: baseUrl,
-            url: payment.url,
-            build_type: payment.build_type,
-            app_name: payment.app_name,
-            package_name: payment.package_name,
             keystore_password: payment.keystore_password,
-            keystore_alias: payment.keystore_alias,
-            callback_url: callbackUrl,
-            enable_gps: Boolean(payment.enable_gps),
-            enable_camera: Boolean(payment.enable_camera),
-            version_code: payment.version_code || 1,
-            version_name: payment.version_name || '1.0.0',
-            keystore_key: payment.keystore_key,
           },
         }),
       }

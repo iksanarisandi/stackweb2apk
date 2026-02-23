@@ -11,17 +11,7 @@ on:
 env:
   GENERATE_ID: ${{ github.event.client_payload.generate_id }}
   API_URL: ${{ github.event.client_payload.api_url }}
-  APP_URL: ${{ github.event.client_payload.url }}
-  BUILD_TYPE: ${{ github.event.client_payload.build_type }}
-  APP_NAME: ${{ github.event.client_payload.app_name }}
-  PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
-  VERSION_CODE: ${{ github.event.client_payload.version_code }}
-  VERSION_NAME: ${{ github.event.client_payload.version_name }}
   KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password }}
-  KEYSTORE_ALIAS: ${{ github.event.client_payload.keystore_alias }}
-  KEYSTORE_KEY: ${{ github.event.client_payload.keystore_key }}
-  ENABLE_GPS: ${{ github.event.client_payload.enable_gps }}
-  ENABLE_CAMERA: ${{ github.event.client_payload.enable_camera }}
 
 jobs:
   build:
@@ -30,15 +20,34 @@ jobs:
     steps:
       - name: Validate payload
         run: |
-          if [ -z "$GENERATE_ID" ] || [ -z "$APP_NAME" ] || [ -z "$PACKAGE_NAME" ]; then
-            echo "Error: Missing required payload fields"
+          if [ -z "$GENERATE_ID" ]; then
+            echo "Error: Missing required payload field: generate_id"
             exit 1
           fi
           echo "Building APK for generate_id: $GENERATE_ID"
-          echo "Build Type: ${BUILD_TYPE:-webview}"
-          echo "URL: $APP_URL"
+
+      - name: Fetch build config from API
+        id: config
+        run: |
+          CONFIG=$(curl -s "${API_URL}/api/generate/${GENERATE_ID}/build-config")
+          echo "Build config received"
+          
+          # Parse and export as environment variables
+          echo "APP_URL=$(echo $CONFIG | jq -r '.url')" >> $GITHUB_ENV
+          echo "BUILD_TYPE=$(echo $CONFIG | jq -r '.build_type')" >> $GITHUB_ENV
+          echo "APP_NAME=$(echo $CONFIG | jq -r '.app_name')" >> $GITHUB_ENV
+          echo "PACKAGE_NAME=$(echo $CONFIG | jq -r '.package_name')" >> $GITHUB_ENV
+          echo "VERSION_CODE=$(echo $CONFIG | jq -r '.version_code')" >> $GITHUB_ENV
+          echo "VERSION_NAME=$(echo $CONFIG | jq -r '.version_name')" >> $GITHUB_ENV
+          echo "KEYSTORE_ALIAS=$(echo $CONFIG | jq -r '.keystore_alias')" >> $GITHUB_ENV
+          echo "KEYSTORE_KEY=$(echo $CONFIG | jq -r '.keystore_key')" >> $GITHUB_ENV
+          echo "ENABLE_GPS=$(echo $CONFIG | jq -r '.enable_gps')" >> $GITHUB_ENV
+          echo "ENABLE_CAMERA=$(echo $CONFIG | jq -r '.enable_camera')" >> $GITHUB_ENV
+          
+          echo "Build Type: $BUILD_TYPE"
           echo "App Name: $APP_NAME"
           echo "Package Name: $PACKAGE_NAME"
+          echo "Version: $VERSION_NAME ($VERSION_CODE)"
           echo "Enable GPS: $ENABLE_GPS"
           echo "Enable Camera: $ENABLE_CAMERA"
 
