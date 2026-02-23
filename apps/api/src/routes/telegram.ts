@@ -236,7 +236,9 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         g.keystore_password,
         g.keystore_alias,
         g.enable_gps,
-        g.enable_camera
+        g.enable_camera,
+        g.version_code,
+        g.version_name
       FROM payments p
       JOIN generates g ON p.generate_id = g.id
       WHERE p.id = ?`
@@ -257,6 +259,8 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         keystore_alias: string | null;
         enable_gps: number;
         enable_camera: number;
+        version_code: number;
+        version_name: string;
       }>();
 
     if (!payment) {
@@ -317,6 +321,8 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
               keystore_alias: payment.keystore_alias,
               enable_gps: Boolean(payment.enable_gps),
               enable_camera: Boolean(payment.enable_camera),
+              version_code: payment.version_code || 1,
+              version_name: payment.version_name || '1.0.0',
             },
           }),
         }
@@ -363,6 +369,8 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         g.keystore_alias,
         g.enable_gps,
         g.enable_camera,
+        g.version_code,
+        g.version_name,
         g.status as generate_status
       FROM payments p
       JOIN generates g ON p.generate_id = g.id
@@ -384,6 +392,8 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
         keystore_alias: string | null;
         enable_gps: number;
         enable_camera: number;
+        version_code: number;
+        version_name: string;
         generate_status: string;
       }>();
 
@@ -440,6 +450,8 @@ telegram.post('/webhook', webhookRateLimit, async (c) => {
               keystore_alias: payment.keystore_alias,
               enable_gps: Boolean(payment.enable_gps),
               enable_camera: Boolean(payment.enable_camera),
+              version_code: payment.version_code || 1,
+              version_name: payment.version_name || '1.0.0',
             },
           }),
         }

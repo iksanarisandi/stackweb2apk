@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace 'com.catatung.app'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.catatung.app"
         minSdk 24
-        targetSdk 34
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
@@ -20,9 +20,9 @@ android {
     signingConfigs {
         release {
             storeFile file('release-keystore.jks')
-            storePassword 'catatuang123'
-            keyAlias 'catatuang'
-            keyPassword 'catatuang123'
+            storePassword System.getenv("KEYSTORE_PASSWORD")
+            keyAlias System.getenv("KEY_ALIAS")
+            keyPassword System.getenv("KEY_PASSWORD")
         }
     }
 

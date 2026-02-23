@@ -412,7 +412,7 @@ generate.get('/', authMiddleware, async (c) => {
   // Query only current user's generates (Property 18: User Data Isolation)
   const result = await c.env.DB.prepare(
     `SELECT id, url, build_type, app_name, package_name, status, error_message, download_count,
-      enable_gps, enable_camera, created_at, completed_at, amount, aab_key, keystore_alias
+      enable_gps, enable_camera, version_code, version_name, created_at, completed_at, amount, aab_key, keystore_alias
      FROM generates
      WHERE user_id = ?
      ORDER BY created_at DESC`
@@ -456,7 +456,7 @@ generate.get('/:id', authMiddleware, async (c) => {
   // Query generate with ownership verification (Property 18: User Data Isolation)
   const result = await c.env.DB.prepare(
     `SELECT id, url, build_type, app_name, package_name, icon_key, apk_key, aab_key,
-      status, error_message, download_count, enable_gps, enable_camera,
+      status, error_message, download_count, enable_gps, enable_camera, version_code, version_name,
       created_at, completed_at, amount, keystore_alias
      FROM generates
      WHERE id = ? AND user_id = ?`
@@ -874,6 +874,179 @@ generate.get('/:id/keystore-file', authMiddleware, async (c) => {
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Length': keystoreObject.size.toString(),
     },
+  });
+});
+
+generate.post('/:id/increment-version', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const generateId = c.req.param('id');
+
+  if (!userId) {
+    throw new HTTPException(401, {
+      message: 'Authentication required',
+    });
+  }
+
+  if (!generateId) {
+    throw new HTTPException(400, {
+      message: 'Generate ID is required',
+    });
+  }
+
+  const result = await c.env.DB.prepare(
+    `SELECT id, user_id, version_code, version_name, status FROM generates WHERE id = ? AND user_id = ?`
+  )
+    .bind(generateId, userId)
+    .first<{ id: string; user_id: string; version_code: number; version_name: string; status: string }>();
+
+  if (!result) {
+    throw new HTTPException(404, {
+      message: 'Generate not found',
+    });
+  }
+
+  const body = await c.req.json<{ version_name?: string }>().catch(() => ({})) as { version_name?: string };
+
+  const currentVersionCode = result.version_code || 1;
+  const newVersionCode = currentVersionCode + 1;
+  const newVersionName = body.version_name || `${newVersionCode}.0.0`;
+
+  await c.env.DB.prepare(
+    `UPDATE generates SET version_code = ?, version_name = ? WHERE id = ?`
+  )
+    .bind(newVersionCode, newVersionName, generateId)
+    .run();
+
+  return c.json({
+    message: 'Version incremented',
+    generate_id: generateId,
+    version_code: newVersionCode,
+    version_name: newVersionName,
+  });
+});
+
+generate.post('/:id/rebuild', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const generateId = c.req.param('id');
+
+  if (!userId) {
+    throw new HTTPException(401, {
+      message: 'Authentication required',
+    });
+  }
+
+  if (!generateId) {
+    throw new HTTPException(400, {
+      message: 'Generate ID is required',
+    });
+  }
+
+  const generate = await c.env.DB.prepare(
+    `SELECT 
+      g.id, g.user_id, g.url, g.build_type, g.app_name, g.package_name, 
+      g.icon_key, g.html_files_key, g.keystore_password, g.keystore_alias,
+      g.enable_gps, g.enable_camera, g.version_code, g.version_name, g.status,
+      p.status as payment_status
+    FROM generates g
+    JOIN payments p ON p.generate_id = g.id
+    WHERE g.id = ? AND g.user_id = ?`
+  )
+    .bind(generateId, userId)
+    .first<{
+      id: string;
+      user_id: string;
+      url: string | null;
+      build_type: string;
+      app_name: string;
+      package_name: string;
+      icon_key: string;
+      html_files_key: string | null;
+      keystore_password: string | null;
+      keystore_alias: string | null;
+      enable_gps: number;
+      enable_camera: number;
+      version_code: number;
+      version_name: string;
+      status: string;
+      payment_status: string;
+    }>();
+
+  if (!generate) {
+    throw new HTTPException(404, {
+      message: 'Generate not found',
+    });
+  }
+
+  if (generate.payment_status !== 'confirmed') {
+    throw new HTTPException(400, {
+      message: 'Payment not confirmed. Cannot rebuild.',
+    });
+  }
+
+  if (generate.status === 'building') {
+    throw new HTTPException(400, {
+      message: 'Build is already in progress.',
+    });
+  }
+
+  const body = await c.req.json<{ version_name?: string }>().catch(() => ({})) as { version_name?: string };
+
+  const currentVersionCode = generate.version_code || 1;
+  const newVersionCode = currentVersionCode + 1;
+  const newVersionName = body.version_name || `${newVersionCode}.0.0`;
+
+  await c.env.DB.prepare(
+    `UPDATE generates SET version_code = ?, version_name = ?, status = 'building', error_message = NULL WHERE id = ?`
+  )
+    .bind(newVersionCode, newVersionName, generateId)
+    .run();
+
+  const baseUrl = new URL(c.req.url).origin;
+
+  try {
+    const githubResponse = await fetch(
+      'https://api.github.com/repos/iksanarisandi/stackweb2apk/dispatches',
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github.v3+json',
+          Authorization: `Bearer ${c.env.GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Web2APK-API',
+        },
+        body: JSON.stringify({
+          event_type: 'build_apk',
+          client_payload: {
+            generate_id: generateId,
+            api_url: baseUrl,
+            url: generate.url,
+            build_type: generate.build_type,
+            app_name: generate.app_name,
+            package_name: generate.package_name,
+            keystore_password: generate.keystore_password,
+            keystore_alias: generate.keystore_alias,
+            enable_gps: Boolean(generate.enable_gps),
+            enable_camera: Boolean(generate.enable_camera),
+            version_code: newVersionCode,
+            version_name: newVersionName,
+          },
+        }),
+      }
+    );
+
+    if (!githubResponse.ok) {
+      console.error('Failed to trigger rebuild:', await githubResponse.text());
+    }
+  } catch (error) {
+    console.error('Error triggering rebuild:', error);
+  }
+
+  return c.json({
+    message: 'Rebuild triggered with new version',
+    generate_id: generateId,
+    version_code: newVersionCode,
+    version_name: newVersionName,
+    status: 'building',
   });
 });
 

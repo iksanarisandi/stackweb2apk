@@ -15,6 +15,8 @@ env:
   BUILD_TYPE: ${{ github.event.client_payload.build_type }}
   APP_NAME: ${{ github.event.client_payload.app_name }}
   PACKAGE_NAME: ${{ github.event.client_payload.package_name }}
+  VERSION_CODE: ${{ github.event.client_payload.version_code }}
+  VERSION_NAME: ${{ github.event.client_payload.version_name }}
   KEYSTORE_PASSWORD: ${{ github.event.client_payload.keystore_password }}
   KEYSTORE_ALIAS: ${{ github.event.client_payload.keystore_alias }}
   ENABLE_GPS: ${{ github.event.client_payload.enable_gps }}
@@ -408,13 +410,13 @@ jobs:
           }
           android {
               namespace '__PACKAGE_NAME__'
-              compileSdk 34
+              compileSdk 35
               defaultConfig {
                   applicationId "__PACKAGE_NAME__"
                   minSdk 24
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
+                  targetSdk 35
+                  versionCode __VERSION_CODE__
+                  versionName "__VERSION_NAME__"
                   testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
               }
               signingConfigs {
@@ -449,6 +451,8 @@ jobs:
           }
           GRADLE_EOF
           sed -i "s/__PACKAGE_NAME__/$PACKAGE_NAME/g" webviewCatatUang/app/build.gradle
+          sed -i "s/__VERSION_CODE__/${VERSION_CODE:-1}/g" webviewCatatUang/app/build.gradle
+          sed -i "s/__VERSION_NAME__/${VERSION_NAME:-1.0}/g" webviewCatatUang/app/build.gradle
 
           # Export variables for the build step
           if [ "$BUILD_TYPE" = "html" ]; then
@@ -502,7 +506,7 @@ jobs:
                   android:supportsRtl="true"
                   android:theme="@style/Theme.WebViewApp"
                   android:usesCleartextTraffic="true"
-                  tools:targetApi="34">
+                  tools:targetApi="35">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
