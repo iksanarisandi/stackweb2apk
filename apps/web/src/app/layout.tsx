@@ -62,6 +62,10 @@ export const metadata: Metadata = {
   alternates: {
     canonical: siteUrl,
   },
+  icons: {
+    icon: '/icon.webp',
+    apple: '/icon.webp',
+  },
   openGraph: {
     type: 'website',
     locale: 'id_ID',
@@ -105,8 +109,8 @@ export default function RootLayout({
   return (
     <html lang="id" className="h-full">
       <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="icon" href="/icon.webp" type="image/webp" sizes="any" />
+        <link rel="apple-touch-icon" href="/icon.webp" />
       </head>
       <body className={`${inter.className} h-full bg-gray-50 antialiased`}>
         {children}
