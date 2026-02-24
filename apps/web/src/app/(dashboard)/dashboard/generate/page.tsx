@@ -210,17 +210,23 @@ export default function GenerateFormPage() {
   // Handle form submission
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    console.log('Form submitted!', { isRevisionMode, revisionId, buildType });
+
     setError(null);
 
     if (!validateForm()) {
+      console.log('Validation failed');
       return;
     }
 
     // Turnstile validation only required in create mode
     if (!isRevisionMode && !turnstileToken) {
+      console.log('Turnstile token missing');
       setError('Silakan selesaikan verifikasi CAPTCHA');
       return;
     }
+
+    console.log('Validation passed, proceeding...');
 
     const token = getToken();
     if (!token) {
