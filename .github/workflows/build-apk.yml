@@ -464,22 +464,14 @@ jobs:
           sed -i "s/__VERSION_CODE__/${VERSION_CODE:-1}/g" webviewCatatUang/app/build.gradle
           sed -i "s/__VERSION_NAME__/${VERSION_NAME:-1.0}/g" webviewCatatUang/app/build.gradle
 
-          # Export variables for the build step
-          if [ "$BUILD_TYPE" = "html" ]; then
-            # HTML builds: use per-project credentials from payload
-            if [ -z "$KEYSTORE_ALIAS" ]; then
-              echo "Error: KEYSTORE_ALIAS is required for HTML builds" >&2
-              exit 1
-            fi
-            echo "APP_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
-            echo "APP_KEY_ALIAS=$KEYSTORE_ALIAS" >> $GITHUB_ENV
-            echo "APP_KEY_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
-          else
-            # WebView builds: use shared keystore from secrets (not from payload)
-            echo "APP_KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
-            echo "APP_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
-            echo "APP_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          # Export variables for the build step (all builds use per-project credentials)
+          if [ -z "$KEYSTORE_ALIAS" ]; then
+            echo "Error: KEYSTORE_ALIAS is required" >&2
+            exit 1
           fi
+          echo "APP_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+          echo "APP_KEY_ALIAS=$KEYSTORE_ALIAS" >> $GITHUB_ENV
+          echo "APP_KEY_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
 
       - name: Replace AndroidManifest.xml
         run: |
@@ -589,42 +581,36 @@ jobs:
           </resources>
           EOF
 
-      - name: Generate per-project keystore or decode shared keystore
+      - name: Generate per-project keystore (all builds)
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
         run: |
-          if [ "$BUILD_TYPE" = "html" ]; then
-            # For HTML builds: check if keystore already exists (rebuild) or generate new one (first build)
-            if [ -n "$KEYSTORE_KEY" ]; then
-              # Download existing keystore from R2 (for rebuild with same signature)
-              pip install awscli
-              aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
-              aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
-              aws configure set default.region auto
-              aws s3 cp "s3://${R2_BUCKET}/${KEYSTORE_KEY}" webviewCatatUang/app/release-keystore.jks --endpoint-url "$R2_ENDPOINT"
-              echo "Downloaded existing keystore for rebuild (key: $KEYSTORE_KEY)"
-            else
-              # Generate new keystore for first build
-              KEYSTORE_ALIAS_VALUE="${KEYSTORE_ALIAS:-release}"
-
-              keytool -genkeypair \
-                -alias "$KEYSTORE_ALIAS_VALUE" \
-                -keyalg RSA \
-                -keysize 2048 \
-                -validity 10000 \
-                -keystore webviewCatatUang/app/release-keystore.jks \
-                -storepass "$KEYSTORE_PASSWORD" \
-                -keypass "$KEYSTORE_PASSWORD" \
-                -dname "CN=$APP_NAME, OU=Development, O=Web2APK, C=ID"
-              echo "Generated new keystore for HTML build (alias: $KEYSTORE_ALIAS_VALUE)"
-            fi
+          # Check if keystore already exists (rebuild) or generate new one (first build)
+          if [ -n "$KEYSTORE_KEY" ]; then
+            # Download existing keystore from R2 (for rebuild with same signature)
+            pip install awscli
+            aws configure set aws_access_key_id "$R2_ACCESS_KEY_ID"
+            aws configure set aws_secret_access_key "$R2_SECRET_ACCESS_KEY"
+            aws configure set default.region auto
+            aws s3 cp "s3://${R2_BUCKET}/${KEYSTORE_KEY}" webviewCatatUang/app/release-keystore.jks --endpoint-url "$R2_ENDPOINT"
+            echo "Downloaded existing keystore for rebuild (key: $KEYSTORE_KEY)"
           else
-            # Decode shared keystore for WebView builds
-            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > webviewCatatUang/app/release-keystore.jks
-            echo "Shared keystore decoded for WebView build"
+            # Generate new keystore for first build
+            KEYSTORE_ALIAS_VALUE="${KEYSTORE_ALIAS:-release}"
+
+            keytool -genkeypair \
+              -alias "$KEYSTORE_ALIAS_VALUE" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -keystore webviewCatatUang/app/release-keystore.jks \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -keypass "$KEYSTORE_PASSWORD" \
+              -dname "CN=$APP_NAME, OU=Development, O=Web2APK, C=ID"
+            echo "Generated new keystore (alias: $KEYSTORE_ALIAS_VALUE)"
           fi
 
       - name: Grant execute permission for gradlew
@@ -641,13 +627,11 @@ jobs:
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
       - name: Build Release AAB
-        if: env.BUILD_TYPE == 'html'
         working-directory: webviewCatatUang
         run: ./gradlew bundleRelease --no-daemon
 
       - name: Find AAB file
         id: find_aab
-        if: env.BUILD_TYPE == 'html'
         run: |
           AAB_PATH=$(find webviewCatatUang/app/build/outputs/bundle/release -name "*.aab" | head -1)
           echo "aab_path=$AAB_PATH" >> $GITHUB_OUTPUT
@@ -668,7 +652,6 @@ jobs:
           echo "apk_key=$APK_KEY" >> $GITHUB_ENV
 
       - name: Upload AAB to R2
-        if: env.BUILD_TYPE == 'html'
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -683,8 +666,8 @@ jobs:
           aws s3 cp "${{ steps.find_aab.outputs.aab_path }}" "s3://${R2_BUCKET}/${AAB_KEY}" --endpoint-url "$R2_ENDPOINT"
           echo "aab_key=$AAB_KEY" >> $GITHUB_ENV
 
-      - name: Upload keystore to R2
-        if: env.BUILD_TYPE == 'html' && env.KEYSTORE_KEY == ''
+      - name: Upload keystore to R2 (first build only)
+        if: env.KEYSTORE_KEY == ''
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

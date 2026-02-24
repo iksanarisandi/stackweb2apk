@@ -15,8 +15,7 @@ const REQUIRED_ICON_WIDTH = 512;
 const REQUIRED_ICON_HEIGHT = 512;
 
 // Constants for pricing
-const PAYMENT_AMOUNT_WEBVIEW = 35000; // Rp35.000
-const PAYMENT_AMOUNT_HTML = 75000; // Rp75.000
+const PAYMENT_AMOUNT = 150000; // Rp150.000 (single price for all build types)
 
 // Constants for HTML ZIP validation
 const MAX_HTML_ZIP_SIZE = 10485760; // 10MB
@@ -203,8 +202,8 @@ generate.post('/', authMiddleware, generateRateLimit, generateIpRateLimit, turns
     );
   }
 
-  // Determine amount based on build type
-  const amount = buildType === 'html' ? PAYMENT_AMOUNT_HTML : PAYMENT_AMOUNT_WEBVIEW;
+  // Determine amount (single price for all build types)
+  const amount = PAYMENT_AMOUNT;
 
   // Validate required fields based on build type
   const issues: Array<{ path: string; message: string }> = [];
@@ -297,6 +296,10 @@ generate.post('/', authMiddleware, generateRateLimit, generateIpRateLimit, turns
   let keystorePassword: string | null = null;
   let keystoreAlias: string | null = null;
 
+  // Generate keystore credentials for ALL builds (both webview and html)
+  keystorePassword = generateKeystorePassword();
+  keystoreAlias = generateKeystoreAlias();
+
   // Generate unique IDs FIRST (before any conditional logic)
   const generateId_ = generateId();
   const paymentId = generateId();
@@ -325,10 +328,6 @@ generate.post('/', authMiddleware, generateRateLimit, generateIpRateLimit, turns
         contentType: 'application/zip',
       },
     });
-
-    // Generate keystore credentials for HTML builds
-    keystorePassword = generateKeystorePassword();
-    keystoreAlias = generateKeystoreAlias();
   }
 
   // Create icon key for R2 storage - use the SAME generateId_
@@ -786,7 +785,7 @@ generate.get('/:id/aab', async (c) => {
 
 /**
  * GET /api/generate/:id/keystore
- * Download keystore metadata for HTML builds
+ * Download keystore metadata for all builds
  */
 generate.get('/:id/keystore', authMiddleware, async (c) => {
   const userId = c.get('userId');
@@ -809,13 +808,6 @@ generate.get('/:id/keystore', authMiddleware, async (c) => {
 
   if (!result) {
     throw new HTTPException(404, { message: 'Generate not found' });
-  }
-
-  if (result.build_type !== 'html') {
-    return c.json({
-      error: 'KEYSTORE_NOT_AVAILABLE',
-      message: 'Keystore is only available for HTML View builds',
-    }, 400);
   }
 
   if (result.status !== 'ready') {
@@ -1092,6 +1084,75 @@ generate.get('/:id/build-config', async (c) => {
     enable_camera: Boolean(generate.enable_camera),
     version_code: generate.version_code || 1,
     version_name: generate.version_name || '1.0.0',
+  });
+});
+
+generate.post('/:id/upload-keystore', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const generateId = c.req.param('id');
+
+  if (!userId) {
+    throw new HTTPException(401, {
+      message: 'Authentication required',
+    });
+  }
+
+  if (!generateId) {
+    throw new HTTPException(400, {
+      message: 'Generate ID is required',
+    });
+  }
+
+  const generate = await c.env.DB.prepare(
+    `SELECT id, user_id, build_type FROM generates WHERE id = ? AND user_id = ?`
+  )
+    .bind(generateId, userId)
+    .first<{ id: string; user_id: string; build_type: string }>();
+
+  if (!generate) {
+    throw new HTTPException(404, {
+      message: 'Generate not found',
+    });
+  }
+
+  const formData = await c.req.formData();
+  const keystoreFile = formData.get('keystore') as File | null;
+  const keystorePassword = formData.get('keystore_password') as string | null;
+  const keystoreAlias = formData.get('keystore_alias') as string | null;
+
+  if (!keystoreFile) {
+    throw new HTTPException(400, {
+      message: 'Keystore file is required',
+    });
+  }
+
+  if (!keystorePassword) {
+    throw new HTTPException(400, {
+      message: 'Keystore password is required',
+    });
+  }
+
+  if (!keystoreAlias) {
+    throw new HTTPException(400, {
+      message: 'Keystore alias is required',
+    });
+  }
+
+  const keystoreKey = `keystores/${generateId}/keystore.jks`;
+
+  await c.env.STORAGE.put(keystoreKey, keystoreFile);
+
+  await c.env.DB.prepare(
+    `UPDATE generates SET keystore_key = ?, keystore_password = ?, keystore_alias = ? WHERE id = ?`
+  )
+    .bind(keystoreKey, keystorePassword, keystoreAlias, generateId)
+    .run();
+
+  return c.json({
+    message: 'Keystore uploaded successfully',
+    generate_id: generateId,
+    keystore_key: keystoreKey,
+    keystore_alias: keystoreAlias,
   });
 });
 

@@ -242,8 +242,6 @@ export default function GenerateFormPage() {
     router.push('/dashboard');
   };
 
-  const price = buildType === 'html' ? 75000 : 35000;
-
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
@@ -278,7 +276,7 @@ export default function GenerateFormPage() {
                   <div className="text-sm text-gray-500">Muat website dari URL</div>
                 </div>
               </div>
-              {buildType === 'webview' && <div className="mt-3 text-sm font-medium text-blue-600">Rp35.000</div>}
+              {buildType === 'webview' && <div className="mt-3 text-sm font-medium text-blue-600">Rp150.000</div>}
             </label>
 
             {/* HTML View Option */}
@@ -293,7 +291,7 @@ export default function GenerateFormPage() {
                   <div className="text-sm text-gray-500">Upload file HTML sendiri</div>
                 </div>
               </div>
-              {buildType === 'html' && <div className="mt-3 text-sm font-medium text-purple-600">Rp75.000</div>}
+              {buildType === 'html' && <div className="mt-3 text-sm font-medium text-purple-600">Rp150.000</div>}
             </label>
           </div>
         </div>
@@ -521,17 +519,17 @@ export default function GenerateFormPage() {
           <div className="flex items-center">
             <InfoIcon className={`w-5 h-5 mr-3 flex-shrink-0 ${buildType === 'html' ? 'text-purple-600' : 'text-blue-600'}`} />
             <div>
-              <p className={`text-sm font-medium ${buildType === 'html' ? 'text-purple-900' : 'text-blue-900'}`}>
-                Biaya Generate: Rp{price.toLocaleString('id-ID')}
+              <p className={`text-sm ${buildType === 'html' ? 'text-purple-700' : 'text-blue-700'}`}>
+                <span className={`font-medium ${buildType === 'html' ? 'text-purple-900' : 'text-blue-900'}`}>Biaya Generate:</span>
+                <span className="line-through text-gray-500 mr-2">Rp300.000</span>
+                <span className={`font-bold ${buildType === 'html' ? 'text-purple-900' : 'text-blue-900'}`}>Rp150.000</span>
               </p>
               <p className={`text-sm ${buildType === 'html' ? 'text-purple-700' : 'text-blue-700'}`}>
                 Pembayaran via QRIS setelah submit form
               </p>
-              {buildType === 'html' && (
-                <p className="text-sm text-purple-600 mt-1">
-                  Termasuk AAB (Android App Bundle) untuk Play Store dan keystore unik
-                </p>
-              )}
+              <p className={`text-sm ${buildType === 'html' ? 'text-purple-600' : 'text-blue-600'} mt-1`}>
+                ✅ AAB untuk Play Store • Keystore Unik • API Level 35 • Bisa Update Versi
+              </p>
             </div>
           </div>
         </div>

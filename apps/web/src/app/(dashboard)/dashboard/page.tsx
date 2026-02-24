@@ -269,7 +269,7 @@ function GenerateCard({
 
   const isHtmlView = buildType === 'html';
   const hasAab = !!aabKey;
-  const hasKeystore = isHtmlView && !!keystoreAlias;
+  const hasKeystore = !!keystoreAlias;
 
   return (
     <div className="card">
@@ -314,16 +314,16 @@ function GenerateCard({
             )}
           </div>
 
-          {/* HTML View specific info */}
-          {isHtmlView && generate.status === 'ready' && (
+          {/* Build specific info */}
+          {generate.status === 'ready' && (
             <div className="mt-3 p-3 bg-purple-50 rounded-lg">
               <p className="text-sm font-medium text-purple-900 mb-1">
-                HTML View Build - Download Tersedia:
+                Build Ready - Download Tersedia:
               </p>
               <ul className="text-sm text-purple-700 space-y-1">
                 <li>• APK untuk instalasi manual</li>
                 <li>• AAB untuk Google Play Store</li>
-                <li>• Keystore untuk update aplikasi</li>
+                <li>• Keystore unik untuk update aplikasi</li>
               </ul>
             </div>
           )}

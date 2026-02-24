@@ -26,9 +26,9 @@ const webApplicationSchema = {
   operatingSystem: 'All',
   offers: {
     '@type': 'Offer',
-    price: '35000',
+    price: '150000',
     priceCurrency: 'IDR',
-    description: 'Convert website to APK Android',
+    description: 'Convert website to APK Android dengan AAB untuk Play Store',
   },
   featureList: [
     'Convert website to APK Android',
@@ -89,7 +89,7 @@ const faqSchema = {
       name: 'Berapa biaya untuk convert website to APK?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Biaya untuk convert website to APK android hanya Rp35.000 per APK (diskon dari Rp100.000). Pembayaran mudah via QRIS dan APK langsung bisa didownload setelah proses selesai.',
+        text: 'Biaya untuk convert website to APK android adalah Rp150.000 per APK (diskon 50% dari Rp300.000). Termasuk AAB untuk Play Store, keystore unik, API Level 35, dan fitur update versi. Pembayaran mudah via QRIS.',
       },
     },
     {
@@ -97,7 +97,7 @@ const faqSchema = {
       name: 'Apakah APK hasil konversi bisa dipublish ke Google Play Store?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Ya! APK yang dihasilkan sudah di-sign dan siap diinstal. Untuk upload ke Google Play Store, kami akan segera menyediakan format AAB (Android App Bundle) yang merupakan format yang diterima Play Store.',
+        text: 'Ya! Setiap build sudah termasuk file AAB (Android App Bundle) yang siap diupload ke Google Play Store, plus keystore unik untuk update aplikasi di masa depan. Menggunakan API Level 35 terbaru.',
       },
     },
     {
@@ -238,8 +238,8 @@ export default function Home() {
                 d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span className="line-through text-green-600 mr-2">Rp100.000</span>
-            <span className="font-bold">Rp35.000</span> per APK
+            <span className="line-through text-green-600 mr-2">Rp300.000</span>
+            <span className="font-bold">Rp150.000</span> per APK
           </div>
 
           {/* Demo Link */}
@@ -610,10 +610,10 @@ export default function Home() {
                 </svg>
               </summary>
               <div className="px-6 pb-6 text-gray-600">
-                Biaya untuk convert website to APK android hanya Rp35.000 per
-                APK (diskon 65% dari Rp100.000). Ini adalah website to android
-                apk converter free trial dengan harga sangat terjangkau.
-                Pembayaran mudah via QRIS.
+                Biaya untuk convert website to APK android adalah Rp150.000 per
+                APK (diskon 50% dari Rp300.000). Termasuk AAB untuk Play Store,
+                keystore unik, API Level 35, dan fitur update versi. Pembayaran
+                mudah via QRIS.
               </div>
             </details>
 
@@ -635,10 +635,10 @@ export default function Home() {
                 </svg>
               </summary>
               <div className="px-6 pb-6 text-gray-600">
-                Ya! APK yang dihasilkan sudah di-sign dan siap diinstal. Untuk
-                upload ke Google Play Store, kami akan segera menyediakan format
-                AAB (Android App Bundle) yang merupakan format resmi yang
-                diterima Play Store.
+                Ya! APK yang dihasilkan sudah di-sign dan siap diinstal. Setiap
+                build juga menyertakan file AAB (Android App Bundle) yang siap
+                diupload ke Google Play Store, plus keystore unik untuk update
+                aplikasi di masa depan. Menggunakan API Level 35 terbaru.
               </div>
             </details>
 
@@ -695,24 +695,25 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Coming Soon Section */}
+      {/* Features Available Section */}
       <section
-        className="py-12 bg-gradient-to-r from-blue-600 to-blue-700"
-        aria-labelledby="coming-soon-heading"
+        className="py-12 bg-gradient-to-r from-green-600 to-green-700"
+        aria-labelledby="features-available-heading"
       >
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="inline-flex items-center bg-white/20 text-white px-3 py-1 rounded-full text-sm font-medium mb-4">
-            🚀 Coming Soon
+            ✅ Tersedia Sekarang
           </div>
           <h2
-            id="coming-soon-heading"
+            id="features-available-heading"
             className="text-2xl font-bold text-white mb-3"
           >
-            Format AAB untuk Play Store
+            Siap Upload ke Play Store dengan AAB
           </h2>
-          <p className="text-blue-100 max-w-xl mx-auto">
-            Segera hadir! Generate file AAB (Android App Bundle) yang siap
-            diupload langsung ke Google Play Store.
+          <p className="text-green-100 max-w-xl mx-auto">
+            Setiap build sudah termasuk file AAB (Android App Bundle) yang siap
+            diupload ke Google Play Store, keystore unik untuk update aplikasi,
+            dan menggunakan API Level 35 terbaru.
           </p>
         </div>
       </section>
