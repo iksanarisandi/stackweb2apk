@@ -117,21 +117,16 @@ export default function GenerateFormPage() {
   const validateForm = (): boolean => {
     const errors: FieldErrors = {};
 
-    console.log('validateForm called', { buildType, isRevisionMode, htmlZipFile: !!htmlZipFile, url, appName, packageName });
-
     // URL validation - required for WebView (Requirement 3.2)
     if (buildType === 'webview') {
       if (!url) {
-        console.log('URL validation failed - empty');
         errors.url = 'URL wajib diisi untuk WebView';
       } else if (!url.startsWith('https://')) {
-        console.log('URL validation failed - not HTTPS');
         errors.url = 'URL harus menggunakan HTTPS';
       } else {
         try {
           new URL(url);
         } catch {
-          console.log('URL validation failed - invalid format');
           errors.url = 'Format URL tidak valid';
         }
       }
@@ -139,46 +134,37 @@ export default function GenerateFormPage() {
 
     // HTML ZIP validation - required for HTML View, but optional in revision mode
     if (buildType === 'html' && !isRevisionMode && !htmlZipFile) {
-      console.log('HTML ZIP validation failed - required in create mode');
       errors.html_files = 'File HTML (ZIP) wajib diupload untuk HTML View';
     }
 
     // App name validation
     if (!appName) {
-      console.log('App name validation failed - empty');
       errors.app_name = 'Nama aplikasi wajib diisi';
     } else if (appName.length > 50) {
-      console.log('App name validation failed - too long');
       errors.app_name = 'Nama aplikasi maksimal 50 karakter';
     }
 
     // Package name validation (Requirement 3.3)
     if (!packageName) {
-      console.log('Package name validation failed - empty');
       errors.package_name = 'Package name wajib diisi';
     } else if (!/^com\.[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/.test(packageName)) {
-      console.log('Package name validation failed - invalid format');
       errors.package_name = 'Format: com.domain.name (huruf kecil dan angka)';
     }
 
     // Icon validation (Requirements 3.4, 3.5) - NOT required in revision mode
     if (!isRevisionMode && !iconFile) {
-      console.log('Icon validation failed - required in create mode');
       errors.icon = 'Icon wajib diupload';
     } else if (iconFile) {
       // Check file type
       if (!iconFile.type.includes('png')) {
-        console.log('Icon validation failed - not PNG');
         errors.icon = 'Icon harus berformat PNG';
       }
       // Check file size - max 1MB (Requirement 3.5)
       if (iconFile.size > 1048576) {
-        console.log('Icon validation failed - too large');
         errors.icon = 'Ukuran icon maksimal 1MB';
       }
     }
 
-    console.log('Validation errors:', errors);
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -224,23 +210,17 @@ export default function GenerateFormPage() {
   // Handle form submission
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted!', { isRevisionMode, revisionId, buildType });
-
     setError(null);
 
     if (!validateForm()) {
-      console.log('Validation failed');
       return;
     }
 
     // Turnstile validation only required in create mode
     if (!isRevisionMode && !turnstileToken) {
-      console.log('Turnstile token missing');
       setError('Silakan selesaikan verifikasi CAPTCHA');
       return;
     }
-
-    console.log('Validation passed, proceeding...');
 
     const token = getToken();
     if (!token) {

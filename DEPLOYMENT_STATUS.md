@@ -34,13 +34,13 @@ You mentioned you've set secrets in Cloudflare Dashboard, but they need to be se
 ```bash
 # Set via Wrangler CLI (requires manual input):
 wrangler secret put TELEGRAM_BOT_TOKEN --env production
-# Input: 8556257852:AAGzMjV_HB2zrLiGtoQs7zImy8QefFsKDG4
+# Input: <YOUR_TELEGRAM_BOT_TOKEN>
 
 wrangler secret put TELEGRAM_ADMIN_ID --env production
-# Input: 5787181924
+# Input: <YOUR_TELEGRAM_ADMIN_ID>
 
 wrangler secret put TELEGRAM_WEBHOOK_SECRET --env production
-# Input: 8beb39c147978cff73c0aa6c8b374e9572e6bd67b000488af88847b180595710
+# Input: <YOUR_WEBHOOK_SECRET>
 ```
 
 #### 2. Activate Telegram Webhook
@@ -48,17 +48,17 @@ wrangler secret put TELEGRAM_WEBHOOK_SECRET --env production
 After setting secrets, activate the webhook:
 
 ```bash
-curl -X POST "https://api.telegram.org/bot8556257852:AAGzMjV_HB2zrLiGtoQs7zImy8QefFsKDG4/setWebhook" \
+curl -X POST "https://api.telegram.org/bot<YOUR_TELEGRAM_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{
     "url": "https://web2apk-api.threadsauto.workers.dev/api/telegram/webhook",
-    "secret_token": "8beb39c147978cff73c0aa6c8b374e9572e6bd67b000488af88847b180595710"
+    "secret_token": "<YOUR_WEBHOOK_SECRET>"
   }'
 ```
 
 **Verify webhook:**
 ```bash
-curl "https://api.telegram.org/bot8556257852:AAGzMjV_HB2zrLiGtoQs7zImy8QefFsKDG4/getWebhookInfo"
+curl "https://api.telegram.org/bot<YOUR_TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 ```
 
 Expected response should show:
@@ -207,16 +207,7 @@ Visit: https://dash.cloudflare.com/<ACCOUNT_ID>/workers/view/web2apk-api
 
 ## Security Notes
 
-⚠️ **IMPORTANT**: The following were exposed in your request and should be rotated:
-
-1. **Telegram Bot Token**: `8556257852:AAGzMjV_HB2zrLiGtoQs7zImy8QefFsKDG4`
-   - Action: Revoke via BotFather and generate new token
-
-2. **Telegram Admin ID**: `5787181924`
-   - Action: This is public info, but verify it's correct
-
-3. **Webhook Secret**: `8beb39c147978cff73c0aa6c8b374e9572e6bd67b000488af88847b180595710`
-   - Action: This should be regenerated as it's now public
+⚠️ **SECURITY REMINDER**: Never commit actual secrets to this file. Always use placeholders.
 
 ## Next Steps
 

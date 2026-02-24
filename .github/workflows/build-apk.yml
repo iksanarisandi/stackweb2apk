@@ -691,8 +691,13 @@ jobs:
           if [ -n "$aab_key" ]; then
             PAYLOAD="$PAYLOAD, \"aab_key\": \"$aab_key\""
           fi
-          if [ -n "$keystore_key" ]; then
-            PAYLOAD="$PAYLOAD, \"keystore_key\": \"$keystore_key\""
+          # Use uploaded keystore_key (first build) or existing KEYSTORE_KEY (rebuild)
+          ACTUAL_KEYSTORE_KEY="$keystore_key"
+          if [ -z "$ACTUAL_KEYSTORE_KEY" ] && [ -n "$KEYSTORE_KEY" ]; then
+            ACTUAL_KEYSTORE_KEY="$KEYSTORE_KEY"
+          fi
+          if [ -n "$ACTUAL_KEYSTORE_KEY" ]; then
+            PAYLOAD="$PAYLOAD, \"keystore_key\": \"$ACTUAL_KEYSTORE_KEY\""
           fi
           PAYLOAD="$PAYLOAD}"
           curl -X POST "${API_URL}/api/webhook/build-complete" -H "Content-Type: application/json" -H "X-Webhook-Secret: $WEBHOOK_SECRET" \

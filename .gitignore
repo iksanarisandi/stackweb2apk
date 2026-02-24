@@ -34,3 +34,14 @@ coverage
 
 # Cloudflare
 .wrangler
+
+# Test files with sensitive data
+test-*.js
+test-*.sh
+test-*.ps1
+build_logs.txt
+*.log
+
+# Deployment status with secrets
+DEPLOYMENT_STATUS.md
+ANALISIS_*.md

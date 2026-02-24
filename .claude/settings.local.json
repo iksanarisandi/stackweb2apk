@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add:*)",
+      "Bash(pnpm run build:*)",
+      "Bash(npx wrangler deploy:*)",
+      "Bash(npx wrangler d1 execute:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh api:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(npx wrangler secret list:*)",
+      "Bash(curl:*)",
+      "Bash(pnpm --filter @web2apk/api deploy:*)",
+      "Bash(pnpm --filter @web2apk/api wrangler deploy:*)",
+      "Bash(pnpm run deploy)",
+      "Bash(gh workflow run:*)",
+      "Bash(gh:*)",
+      "Bash(\"D:\\\\Dari Desktop\\\\Kiro\\\\stackweb2apk\\\\fix-nodejs-compat.md\" << 'EOF'\n# Fix Node.js Compatibility Error di Cloudflare Pages\n\n## Masalah\nError: \"no nodejs_compat compatibility flag set\"\n\n## Solusi via Cloudflare Dashboard\n\n1. Buka [Cloudflare Dashboard]\\(https://dash.cloudflare.com/\\)\n2. Pilih **Workers & Pages**\n3. Klik project **web2apk-web**\n4. Pilih tab **Settings**\n5. Scroll ke **Compatibility Flags**\n6. Klik **Add flag** dan tambahkan:\n   - **Name**: `nodejs_compat`\n   - Value: `true`\n7. Pilih **Production** dan **Preview** environments\n8. Klik **Save**\n\n## Solusi via Wrangler CLI\n\n```bash\n# Set nodejs_compat flag untuk production\nnpx wrangler pages deployment create --project-name=web2apk-web --branch=production \\\\\n  --compatibility-flag=nodejs_compat --compatibility-date=2024-01-01\n\n# Atau set di project settings\nnpx wrangler pages project settings --project-name=web2apk-web \\\\\n  --compatibility-flags=nodejs_compat\n```\n\n## Solusi via API\n\n```bash\n# Get project settings\ncurl -X GET \"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/pages/projects/web2apk-web\" \\\\\n  -H \"Authorization: Bearer {API_TOKEN}\"\n\n# Update with nodejs_compat flag\ncurl -X PATCH \"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/pages/projects/web2apk-web\" \\\\\n  -H \"Authorization: Bearer {API_TOKEN}\" \\\\\n  -H \"Content-Type: application/json\" \\\\\n  -d '{\n    \"production_environment\": {\n      \"compatibility_flags\": [\"nodejs_compat\"]\n    },\n    \"preview_environment\": {\n      \"compatibility_flags\": [\"nodejs_compat\"]\n    }\n  }'\n```\n\n## Verifikasi\n\nSetelah mengatur flag:\n1. Clear browser cache\n2. Refresh website: https://2apk.de\n3. Error seharusnya hilang\n\n## Alternatif: Tambahkan ke _headers file\n\nJika tidak bisa ubah settings, buat file `apps/web/public/_headers`:\n\n```\n/*\n  X-Cloudflare-Compatibility-Flag: nodejs_compat\n```\n\nLalu deploy ulang.\nEOF)",
+      "Bash(npm run build:*)",
+      "Bash(git rm:*)",
+      "Bash(pnpm --filter @web2apk/web run build:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)"
+    ]
+  }
+}
