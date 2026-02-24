@@ -216,7 +216,8 @@ export default function GenerateFormPage() {
       return;
     }
 
-    if (!turnstileToken) {
+    // Turnstile validation only required in create mode
+    if (!isRevisionMode && !turnstileToken) {
       setError('Silakan selesaikan verifikasi CAPTCHA');
       return;
     }
@@ -238,7 +239,6 @@ export default function GenerateFormPage() {
       }
       formData.append('app_name', appName);
       formData.append('package_name', packageName);
-      formData.append('turnstile_token', turnstileToken);
       formData.append('enable_gps', enableGps ? 'true' : 'false');
       formData.append('enable_camera', enableCamera ? 'true' : 'false');
       if (iconFile) {
@@ -252,6 +252,11 @@ export default function GenerateFormPage() {
       const endpoint = isRevisionMode && revisionId
         ? `${API_BASE_URL}/api/generate/${revisionId}/rebuild`
         : `${API_BASE_URL}/api/generate`;
+
+      // Only add turnstile_token in create mode
+      if (!isRevisionMode && turnstileToken) {
+        formData.append('turnstile_token', turnstileToken);
+      }
 
       const response = await fetch(endpoint, {
         method: 'POST',
