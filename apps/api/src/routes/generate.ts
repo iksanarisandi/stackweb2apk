@@ -917,6 +917,11 @@ generate.post('/:id/increment-version', authMiddleware, async (c) => {
   });
 });
 
+/**
+ * POST /api/generate/:id/rebuild
+ * Rebuild APK with optional new HTML ZIP file
+ * Preserves keystore, increments version, updates html_files if provided
+ */
 generate.post('/:id/rebuild', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const generateId = c.req.param('id');
@@ -934,8 +939,8 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
   }
 
   const generate = await c.env.DB.prepare(
-    `SELECT 
-      g.id, g.user_id, g.url, g.build_type, g.app_name, g.package_name, 
+    `SELECT
+      g.id, g.user_id, g.url, g.build_type, g.app_name, g.package_name,
       g.icon_key, g.html_files_key, g.keystore_password, g.keystore_alias, g.keystore_key,
       g.enable_gps, g.enable_camera, g.version_code, g.version_name, g.status,
       p.status as payment_status
@@ -982,16 +987,86 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
     });
   }
 
-  const body = await c.req.json<{ version_name?: string }>().catch(() => ({})) as { version_name?: string };
+  // Parse multipart form data (support both JSON and FormData)
+  const contentType = c.req.header('content-type') || '';
 
+  let newHtmlZip: File | null = null;
+  let customVersionName: string | null = null;
+
+  if (contentType.includes('multipart/form-data')) {
+    // Parse as multipart form data
+    const formData = await c.req.formData();
+    newHtmlZip = formData.get('html_files') as File | null;
+    customVersionName = formData.get('version_name') as string | null;
+  } else {
+    // Parse as JSON (backward compatibility)
+    const body = await c.req.json<{ version_name?: string }>().catch(() => ({})) as { version_name?: string };
+    customVersionName = body.version_name || null;
+  }
+
+  // Validate and upload new HTML ZIP if provided
+  let newHtmlFilesKey = generate.html_files_key;
+  let newHtmlFileCount = 0;
+
+  if (newHtmlZip && newHtmlZip instanceof File) {
+    // Only allow HTML ZIP update for html builds
+    if (generate.build_type !== 'html') {
+      return c.json(
+        {
+          error: 'VALIDATION_ERROR',
+          message: 'HTML files can only be updated for HTML View builds',
+          details: {
+            issues: [{ path: 'html_files', message: 'Not applicable for WebView builds' }],
+          },
+        },
+        400
+      );
+    }
+
+    // Validate the new HTML ZIP
+    const zipValidation = await validateHtmlZip(newHtmlZip);
+    if (!zipValidation.valid) {
+      return c.json(
+        {
+          error: 'VALIDATION_ERROR',
+          message: zipValidation.error,
+          details: {
+            issues: [{ path: 'html_files', message: zipValidation.error || 'Invalid ZIP file' }],
+          },
+        },
+        400
+      );
+    }
+
+    newHtmlFileCount = zipValidation.fileCount || 0;
+
+    // Upload new HTML ZIP to R2 (overwrite existing key)
+    newHtmlFilesKey = `html-files/${generateId}/files.zip`;
+    const htmlZipBuffer = await newHtmlZip.arrayBuffer();
+    await c.env.STORAGE.put(newHtmlFilesKey, htmlZipBuffer, {
+      httpMetadata: {
+        contentType: 'application/zip',
+      },
+    });
+  }
+
+  // Calculate new version
   const currentVersionCode = generate.version_code || 1;
   const newVersionCode = currentVersionCode + 1;
-  const newVersionName = body.version_name || `${newVersionCode}.0.0`;
+  const newVersionName = customVersionName || `${newVersionCode}.0.0`;
 
+  // Update database with new version and optionally new html_files_key
   await c.env.DB.prepare(
-    `UPDATE generates SET version_code = ?, version_name = ?, status = 'building', error_message = NULL WHERE id = ?`
+    `UPDATE generates
+     SET version_code = ?,
+         version_name = ?,
+         html_files_key = ?,
+         html_file_count = COALESCE(?, html_file_count),
+         status = 'building',
+         error_message = NULL
+     WHERE id = ?`
   )
-    .bind(newVersionCode, newVersionName, generateId)
+    .bind(newVersionCode, newVersionName, newHtmlFilesKey, newHtmlFileCount || null, generateId)
     .run();
 
   const baseUrl = new URL(c.req.url).origin;
@@ -1026,10 +1101,13 @@ generate.post('/:id/rebuild', authMiddleware, async (c) => {
   }
 
   return c.json({
-    message: 'Rebuild triggered with new version',
+    message: newHtmlZip
+      ? 'Rebuild triggered with new HTML files and version'
+      : 'Rebuild triggered with new version',
     generate_id: generateId,
     version_code: newVersionCode,
     version_name: newVersionName,
+    html_files_updated: !!newHtmlZip,
     status: 'building',
   });
 });

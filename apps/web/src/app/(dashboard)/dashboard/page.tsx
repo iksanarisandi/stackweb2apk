@@ -16,14 +16,6 @@ interface DownloadResponse {
   aab_download_url?: string;
 }
 
-interface RebuildResponse {
-  message: string;
-  generate_id: string;
-  version_code: number;
-  version_name: string;
-  status: string;
-}
-
 // Status badge component (Requirements 8.2, 8.3, 8.4, 8.5)
 function StatusBadge({ status }: { status: GenerateStatus }) {
   const statusConfig: Record<GenerateStatus, { label: string; className: string }> = {
@@ -65,8 +57,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [keystoreModalId, setKeystoreModalId] = useState<string | null>(null);
-  const [rebuildingId, setRebuildingId] = useState<string | null>(null);
-  const [rebuildSuccess, setRebuildSuccess] = useState<{ id: string; version: string } | null>(null);
 
   useEffect(() => {
     fetchGenerates();
@@ -128,41 +118,6 @@ export default function DashboardPage() {
     }
   };
 
-  const handleRebuild = async (generateId: string, versionName?: string) => {
-    const token = getToken();
-    if (!token) return;
-
-    const confirmMsg = versionName
-      ? `Rebuild APK dengan versi ${versionName}?`
-      : 'Rebuild APK dengan versi baru?';
-
-    if (!confirm(confirmMsg)) return;
-
-    setRebuildingId(generateId);
-    setRebuildSuccess(null);
-
-    const { data, error: apiError } = await authApiRequest<RebuildResponse>(
-      `/api/generate/${generateId}/rebuild`,
-      token,
-      {
-        method: 'POST',
-        body: JSON.stringify(versionName ? { version_name: versionName } : {}),
-      }
-    );
-
-    setRebuildingId(null);
-
-    if (apiError) {
-      alert(apiError.message);
-      return;
-    }
-
-    if (data) {
-      setRebuildSuccess({ id: generateId, version: data.version_name });
-      fetchGenerates();
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -190,17 +145,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {rebuildSuccess && (
-        <div className="rounded-md bg-green-50 p-4 mb-6 flex items-center justify-between">
-          <p className="text-sm text-green-800">
-            Rebuild berhasil! Versi baru: {rebuildSuccess.version}
-          </p>
-          <button onClick={() => setRebuildSuccess(null)} className="text-green-600 hover:text-green-800">
-            <CloseIcon className="w-5 h-5" />
-          </button>
-        </div>
-      )}
-
       {generates.length === 0 ? (
         <div className="card text-center py-12">
           <EmptyIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -223,8 +167,6 @@ export default function DashboardPage() {
               onDownload={handleDownload}
               isDownloading={downloadingId === generate.id}
               onKeystoreDownload={(id) => setKeystoreModalId(id)}
-              onRebuild={handleRebuild}
-              isRebuilding={rebuildingId === generate.id}
             />
           ))}
         </div>
@@ -249,15 +191,11 @@ function GenerateCard({
   onDownload,
   isDownloading,
   onKeystoreDownload,
-  onRebuild,
-  isRebuilding,
 }: {
   generate: Generate;
   onDownload: (id: string, type: 'apk' | 'aab') => void;
   isDownloading: boolean;
   onKeystoreDownload: (id: string) => void;
-  onRebuild: (id: string, versionName?: string) => void;
-  isRebuilding: boolean;
 }) {
   // Type assertion for extended fields that may exist on Generate from API
   const buildType = (generate as { build_type?: BuildType }).build_type;
@@ -405,24 +343,14 @@ function GenerateCard({
                 </button>
               )}
 
-              {/* Rebuild button */}
-              <button
-                onClick={() => onRebuild(generate.id, versionName)}
-                disabled={isRebuilding}
-                className="btn-secondary w-full sm:w-auto border-blue-500 text-blue-700 hover:bg-blue-50"
+              {/* Rebuild button - opens generate form in revision mode */}
+              <Link
+                href={`/dashboard/generate?revision=${generate.id}`}
+                className="btn-secondary w-full sm:w-auto border-blue-500 text-blue-700 hover:bg-blue-50 flex items-center justify-center"
               >
-                {isRebuilding ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                    Rebuilding...
-                  </>
-                ) : (
-                  <>
-                    <RefreshIcon className="w-5 h-5 mr-2" />
-                    Rebuild APK
-                  </>
-                )}
-              </button>
+                <RefreshIcon className="w-5 h-5 mr-2" />
+                Rebuild / Edit
+              </Link>
             </>
           )}
         </div>
@@ -468,14 +396,6 @@ function RefreshIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-  );
-}
-
-function CloseIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
 }
