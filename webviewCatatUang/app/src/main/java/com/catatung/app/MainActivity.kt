@@ -198,6 +198,8 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 swipeRefreshLayout.isRefreshing = false
+                // Inject JS untuk mencegat blob: URL download sebelum sampai ke download listener
+                injectBlobDownloadInterceptor()
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -387,35 +389,93 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Konversi blob: URL ke base64 melalui JavaScript, lalu simpan menggunakan BlobDownloadInterface
+    // Inject JS ke halaman untuk mencegat klik pada <a href="blob:..."> SEBELUM
+    // mencapai download listener — lebih andal karena blob URL masih valid di konteks halaman.
+    private fun injectBlobDownloadInterceptor() {
+        val js = """
+            (function() {
+                if (window.__androidBlobInterceptorActive) return;
+                window.__androidBlobInterceptorActive = true;
+
+                function fetchBlobAndSend(href, filename) {
+                    fetch(href)
+                        .then(function(r) { return r.blob(); })
+                        .then(function(blob) {
+                            return new Promise(function(resolve, reject) {
+                                var fr = new FileReader();
+                                fr.onloadend = function() {
+                                    if (fr.result) resolve(fr.result);
+                                    else reject(new Error('FileReader returned empty'));
+                                };
+                                fr.onerror = function() { reject(fr.error); };
+                                fr.readAsDataURL(blob);
+                            });
+                        })
+                        .then(function(dataUrl) {
+                            var mime = dataUrl.split(':')[1].split(';')[0];
+                            var base64 = dataUrl.split(',')[1];
+                            AndroidDownload.receiveBase64(filename, mime, base64);
+                        })
+                        .catch(function(err) {
+                            AndroidDownload.onError(String(err));
+                        });
+                }
+
+                // Tangkap klik pada anchor dengan href blob:
+                document.addEventListener('click', function(e) {
+                    var el = e.target;
+                    // Telusuri ke atas mencari elemen <a>
+                    while (el && el.tagName !== 'A') el = el.parentElement;
+                    if (el && el.href && el.href.startsWith('blob:')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        var filename = el.getAttribute('download') || el.getAttribute('filename') || 'download_' + Date.now();
+                        AndroidDownload.onDownloadStart(filename);
+                        fetchBlobAndSend(el.href, filename);
+                    }
+                }, true);
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
+    // Fallback: dipanggil dari download listener jika blob URL sampai sini
+    // (misal download dipicu programatik bukan klik anchor)
     private fun downloadBlobUrl(blobUrl: String, mimeType: String, contentDisposition: String) {
         val fileName = URLUtil.guessFileName(blobUrl, contentDisposition, mimeType)
             .let { if (it == "downloadfile") "file_${System.currentTimeMillis()}" else it }
 
+        // Gunakan fetch() — BUKAN XHR — karena fetch() menangani blob: URL dengan benar.
+        // XHR mengembalikan status=0 untuk blob URL (bukan 200) sehingga cek status gagal.
+        val escapedUrl = blobUrl.replace("'", "\\'")
+        val escapedName = fileName.replace("'", "\\'")
         val js = """
             (function() {
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET', '$blobUrl', true);
-                xhr.responseType = 'blob';
-                xhr.onload = function() {
-                    if (xhr.status === 200) {
-                        var reader = new FileReader();
-                        reader.onloadend = function() {
-                            var base64 = reader.result.split(',')[1];
-                            AndroidDownload.receiveBase64('$fileName', reader.result.split(':')[1].split(';')[0], base64);
-                        };
-                        reader.readAsDataURL(xhr.response);
-                    }
-                };
-                xhr.onerror = function() {
-                    AndroidDownload.onError('Gagal mengunduh blob URL');
-                };
-                xhr.send();
+                fetch('$escapedUrl')
+                    .then(function(r) { return r.blob(); })
+                    .then(function(blob) {
+                        return new Promise(function(resolve, reject) {
+                            var fr = new FileReader();
+                            fr.onloadend = function() {
+                                if (fr.result) resolve(fr.result);
+                                else reject(new Error('FileReader empty'));
+                            };
+                            fr.onerror = function() { reject(fr.error); };
+                            fr.readAsDataURL(blob);
+                        });
+                    })
+                    .then(function(dataUrl) {
+                        var mime = dataUrl.split(':')[1].split(';')[0];
+                        var base64 = dataUrl.split(',')[1];
+                        AndroidDownload.receiveBase64('$escapedName', mime, base64);
+                    })
+                    .catch(function(err) {
+                        AndroidDownload.onError(String(err));
+                    });
             })();
         """.trimIndent()
 
         webView.evaluateJavascript(js, null)
-        Toast.makeText(this, "Menyiapkan unduhan...", Toast.LENGTH_SHORT).show()
     }
 
     private fun downloadDataUrl(dataUrl: String, contentDisposition: String) {
@@ -465,6 +525,14 @@ class MainActivity : AppCompatActivity() {
 
     // ── JavaScript Interface untuk blob download ──
     inner class BlobDownloadInterface {
+
+        @JavascriptInterface
+        fun onDownloadStart(fileName: String) {
+            runOnUiThread {
+                Toast.makeText(this@MainActivity, "Menyiapkan: $fileName...", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         @JavascriptInterface
         fun receiveBase64(fileName: String, mimeType: String, base64: String) {
             runOnUiThread {
@@ -475,8 +543,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun onError(message: String) {
             runOnUiThread {
-                // Fallback: buka di browser jika blob download gagal
-                Toast.makeText(this@MainActivity, "Error: $message", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, "Unduhan gagal: $message", Toast.LENGTH_LONG).show()
             }
         }
     }
