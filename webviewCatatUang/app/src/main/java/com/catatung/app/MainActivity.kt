@@ -18,6 +18,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.print.PrintManager
 import android.provider.MediaStore
+import android.util.Base64
 import android.view.View
 import android.webkit.*
 import android.widget.FrameLayout
@@ -27,6 +28,8 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import java.io.File
+import java.io.FileOutputStream
 // __GPS_IMPORT__
 // __CAMERA_IMPORT__
 
@@ -38,9 +41,9 @@ class MainActivity : AppCompatActivity() {
 
     // ── File Upload & Camera ──
     private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
-    private var cameraImageUri: Uri? = null           // URI output kamera yang dibuat sebelum capture
+    private var cameraImageUri: Uri? = null
     private val FILE_CHOOSER_REQUEST_CODE = 1001
-    private val PERMISSION_REQUEST_CODE = 1002        // Satu kode untuk semua permission startup
+    private val PERMISSION_REQUEST_CODE = 1002
 
     // ── Fullscreen Video ──
     private var customView: View? = null
@@ -67,7 +70,6 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
 
-        // Fullscreen video container
         customViewContainer = FrameLayout(this).also {
             it.layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -81,8 +83,6 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupSwipeRefresh()
         setupDownloadListener()
-
-        // ── Minta semua izin yang diperlukan saat aplikasi dibuka ──
         requestRequiredPermissions()
 
         // __GPS_PERMISSION_REQUEST__
@@ -94,25 +94,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Minta izin kamera + penyimpanan saat startup ──
+    // ── Minta izin kamera + storage saat startup ──
     private fun requestRequiredPermissions() {
         val permissions = mutableListOf<String>()
 
-        // Izin kamera (selalu diperlukan karena file chooser selalu menampilkan opsi kamera)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
             permissions.add(Manifest.permission.CAMERA)
         }
 
-        // Izin penyimpanan — berbeda tergantung versi Android
         if (Build.VERSION.SDK_INT >= 33) {
-            // Android 13+ → gunakan izin granular media
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
                 != PackageManager.PERMISSION_GRANTED) {
                 permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
             }
         } else {
-            // Android 12 ke bawah → izin penyimpanan lama
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
                 permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -122,6 +118,51 @@ class MainActivity : AppCompatActivity() {
         if (permissions.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, permissions.toTypedArray(), PERMISSION_REQUEST_CODE)
         }
+    }
+
+    // ── Resolve MIME type dari acceptTypes WebChromeClient ──
+    // acceptTypes bisa berisi ["image/*"], [".jpg,.png"], ["image/jpeg","image/png"], atau [""]
+    private fun resolveMimeType(params: WebChromeClient.FileChooserParams?): String {
+        val raw = params?.acceptTypes
+            ?.flatMap { it.split(",") }          // pisah "image/jpeg,image/png" → list
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+
+        if (raw.isEmpty()) return "*/*"
+
+        // Konversi ekstensi file ke MIME type
+        val mimes = raw.map { token ->
+            when {
+                token.startsWith(".") -> extensionToMime(token)
+                else -> token
+            }
+        }
+
+        if (mimes.size == 1) return mimes[0]
+
+        // Jika semua image → image/*  (galeri bisa tampil)
+        return when {
+            mimes.all { it.startsWith("image/") } -> "image/*"
+            mimes.all { it.startsWith("video/") } -> "video/*"
+            mimes.all { it.startsWith("audio/") } -> "audio/*"
+            else -> "*/*"
+        }
+    }
+
+    private fun extensionToMime(ext: String): String = when (ext.lowercase()) {
+        ".jpg", ".jpeg" -> "image/jpeg"
+        ".png"          -> "image/png"
+        ".gif"          -> "image/gif"
+        ".webp"         -> "image/webp"
+        ".pdf"          -> "application/pdf"
+        ".doc"          -> "application/msword"
+        ".docx"         -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ".xls"          -> "application/vnd.ms-excel"
+        ".xlsx"         -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ".mp4"          -> "video/mp4"
+        ".mp3"          -> "audio/mpeg"
+        else            -> "*/*"
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -144,6 +185,9 @@ class MainActivity : AppCompatActivity() {
             setSupportMultipleWindows(true)
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         }
+
+        // JavaScript interface untuk menangani blob: URL download
+        webView.addJavascriptInterface(BlobDownloadInterface(), "AndroidDownload")
 
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
@@ -182,75 +226,55 @@ class MainActivity : AppCompatActivity() {
                 swipeRefreshLayout.isRefreshing = newProgress < 100
             }
 
-            // ── JS alert() ──
             override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
                 AlertDialog.Builder(this@MainActivity)
                     .setMessage(message)
                     .setPositiveButton("OK") { _, _ -> result?.confirm() }
-                    .setCancelable(false)
-                    .show()
+                    .setCancelable(false).show()
                 return true
             }
 
-            // ── JS confirm() ──
             override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
                 AlertDialog.Builder(this@MainActivity)
                     .setMessage(message)
                     .setPositiveButton("OK") { _, _ -> result?.confirm() }
                     .setNegativeButton("Batal") { _, _ -> result?.cancel() }
-                    .setCancelable(false)
-                    .show()
+                    .setCancelable(false).show()
                 return true
             }
 
-            // ── JS prompt() ──
             override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?): Boolean {
                 val input = android.widget.EditText(this@MainActivity).also { it.setText(defaultValue) }
                 AlertDialog.Builder(this@MainActivity)
-                    .setMessage(message)
-                    .setView(input)
+                    .setMessage(message).setView(input)
                     .setPositiveButton("OK") { _, _ -> result?.confirm(input.text.toString()) }
                     .setNegativeButton("Batal") { _, _ -> result?.cancel() }
-                    .setCancelable(false)
-                    .show()
+                    .setCancelable(false).show()
                 return true
             }
 
-            // ── File Upload (semua jenis file + kamera) ──
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
                 fileChooserParams: FileChooserParams?
             ): Boolean {
-                // Batalkan callback lama jika ada
                 pendingFileCallback?.onReceiveValue(null)
                 pendingFileCallback = filePathCallback
-
                 openFilePicker(fileChooserParams)
                 return true
             }
 
-            // ── Fullscreen Video (YouTube embed, HTML5 video) ──
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                customView?.let {
-                    callback?.onCustomViewHidden()
-                    return
-                }
+                customView?.let { callback?.onCustomViewHidden(); return }
                 customView = view
                 customViewCallback = callback
-                customViewContainer?.apply {
-                    addView(view)
-                    visibility = View.VISIBLE
-                }
+                customViewContainer?.apply { addView(view); visibility = View.VISIBLE }
                 webView.visibility = View.GONE
                 swipeRefreshLayout.visibility = View.GONE
             }
 
             override fun onHideCustomView() {
-                customViewContainer?.apply {
-                    removeView(customView)
-                    visibility = View.GONE
-                }
+                customViewContainer?.apply { removeView(customView); visibility = View.GONE }
                 customView = null
                 customViewCallback?.onCustomViewHidden()
                 webView.visibility = View.VISIBLE
@@ -262,31 +286,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Buka file picker dengan opsi kamera ──
+    // ── Buka file picker dengan MIME type yang benar ──
     private fun openFilePicker(fileChooserParams: WebChromeClient.FileChooserParams?) {
-        val acceptTypes = fileChooserParams?.acceptTypes?.joinToString(",") ?: "*/*"
-        val mimeType = if (acceptTypes.isBlank() || acceptTypes == ",") "*/*" else acceptTypes
+        val mimeType = resolveMimeType(fileChooserParams)
+        val allowMultiple = fileChooserParams?.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
 
         val extraIntents = mutableListOf<Intent>()
 
-        // Buat URI output untuk kamera (agar foto full-resolution tersimpan)
+        // Kamera (jika izin sudah diberikan)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED) {
             val uri = createCameraImageUri()
             if (uri != null) {
                 cameraImageUri = uri
-                val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
-                    putExtra(MediaStore.EXTRA_OUTPUT, uri)
-                }
-                extraIntents.add(cameraIntent)
+                extraIntents.add(
+                    Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                        putExtra(MediaStore.EXTRA_OUTPUT, uri)
+                    }
+                )
             }
         }
 
-        // File picker (galeri + semua jenis file)
+        // Galeri / file picker — gunakan ACTION_GET_CONTENT agar galeri muncul
         val fileIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
             type = mimeType
             addCategory(Intent.CATEGORY_OPENABLE)
-            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
         }
 
         val chooser = Intent.createChooser(fileIntent, "Pilih file atau ambil foto")
@@ -300,49 +325,158 @@ class MainActivity : AppCompatActivity() {
             pendingFileCallback?.onReceiveValue(null)
             pendingFileCallback = null
             cameraImageUri = null
+            Toast.makeText(this, "Tidak ada aplikasi untuk membuka file", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // ── Buat URI output untuk kamera menggunakan MediaStore ──
     private fun createCameraImageUri(): Uri? {
         return try {
-            val contentValues = ContentValues().apply {
+            val cv = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, "foto_${System.currentTimeMillis()}.jpg")
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
                 }
             }
-            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-        } catch (e: Exception) {
-            null
+            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+        } catch (e: Exception) { null }
+    }
+
+    // ── Download Manager — tangani URL biasa dan blob: ──
+    private fun setupDownloadListener() {
+        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            if (url.startsWith("blob:")) {
+                // Blob URL → gunakan JavaScript untuk konversi ke base64 lalu simpan
+                downloadBlobUrl(url, mimeType, contentDisposition)
+            } else if (url.startsWith("data:")) {
+                // Data URL → decode langsung
+                downloadDataUrl(url, contentDisposition)
+            } else {
+                // URL biasa → DownloadManager
+                downloadWithManager(url, userAgent, contentDisposition, mimeType)
+            }
         }
     }
 
-    // ── Download Manager ──
-    private fun setupDownloadListener() {
-        webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+    private fun downloadWithManager(url: String, userAgent: String, contentDisposition: String, mimeType: String) {
+        try {
+            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            val cookies = CookieManager.getInstance().getCookie(url) ?: ""
+
+            val request = DownloadManager.Request(Uri.parse(url)).apply {
+                setMimeType(mimeType)
+                if (userAgent.isNotBlank()) addRequestHeader("User-Agent", userAgent)
+                if (cookies.isNotBlank()) addRequestHeader("Cookie", cookies)
+                setTitle(fileName)
+                setDescription("Mengunduh $fileName...")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                setAllowedNetworkTypes(
+                    DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE
+                )
+            }
+            val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            dm.enqueue(request)
+            Toast.makeText(this, "Mengunduh $fileName...", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
             try {
-                val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                val request = DownloadManager.Request(Uri.parse(url)).apply {
-                    setMimeType(mimeType)
-                    addRequestHeader("User-Agent", userAgent)
-                    addRequestHeader("Cookie", CookieManager.getInstance().getCookie(url))
-                    setTitle(fileName)
-                    setDescription("Mengunduh $fileName...")
-                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-                    setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            } catch (ex: Exception) {
+                Toast.makeText(this, "Gagal mengunduh file", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Konversi blob: URL ke base64 melalui JavaScript, lalu simpan menggunakan BlobDownloadInterface
+    private fun downloadBlobUrl(blobUrl: String, mimeType: String, contentDisposition: String) {
+        val fileName = URLUtil.guessFileName(blobUrl, contentDisposition, mimeType)
+            .let { if (it == "downloadfile") "file_${System.currentTimeMillis()}" else it }
+
+        val js = """
+            (function() {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '$blobUrl', true);
+                xhr.responseType = 'blob';
+                xhr.onload = function() {
+                    if (xhr.status === 200) {
+                        var reader = new FileReader();
+                        reader.onloadend = function() {
+                            var base64 = reader.result.split(',')[1];
+                            AndroidDownload.receiveBase64('$fileName', reader.result.split(':')[1].split(';')[0], base64);
+                        };
+                        reader.readAsDataURL(xhr.response);
+                    }
+                };
+                xhr.onerror = function() {
+                    AndroidDownload.onError('Gagal mengunduh blob URL');
+                };
+                xhr.send();
+            })();
+        """.trimIndent()
+
+        webView.evaluateJavascript(js, null)
+        Toast.makeText(this, "Menyiapkan unduhan...", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun downloadDataUrl(dataUrl: String, contentDisposition: String) {
+        try {
+            // Format: data:<mimeType>;base64,<data>
+            val parts = dataUrl.split(",", limit = 2)
+            if (parts.size != 2) return
+            val meta = parts[0]   // data:image/png;base64
+            val base64Data = parts[1]
+            val mime = meta.substringAfter("data:").substringBefore(";")
+            val ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: "bin"
+            val fileName = "download_${System.currentTimeMillis()}.$ext"
+
+            saveBase64ToDownloads(fileName, mime, base64Data)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun saveBase64ToDownloads(fileName: String, mimeType: String, base64: String) {
+        try {
+            val bytes = Base64.decode(base64, Base64.DEFAULT)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ → MediaStore (tidak butuh WRITE permission)
+                val cv = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
                 }
-                val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
-                dm.enqueue(request)
-                Toast.makeText(this, "Mengunduh $fileName...", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                } catch (ex: Exception) {
-                    Toast.makeText(this, "Gagal membuka file", Toast.LENGTH_SHORT).show()
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)
+                uri?.let {
+                    contentResolver.openOutputStream(it)?.use { os -> os.write(bytes) }
                 }
+            } else {
+                // Android 9 ke bawah → file langsung
+                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val file = File(dir, fileName)
+                FileOutputStream(file).use { it.write(bytes) }
+            }
+
+            Toast.makeText(this, "File disimpan: $fileName", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Gagal menyimpan file: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ── JavaScript Interface untuk blob download ──
+    inner class BlobDownloadInterface {
+        @JavascriptInterface
+        fun receiveBase64(fileName: String, mimeType: String, base64: String) {
+            runOnUiThread {
+                saveBase64ToDownloads(fileName, mimeType, base64)
+            }
+        }
+
+        @JavascriptInterface
+        fun onError(message: String) {
+            runOnUiThread {
+                // Fallback: buka di browser jika blob download gagal
+                Toast.makeText(this@MainActivity, "Error: $message", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -375,9 +509,7 @@ class MainActivity : AppCompatActivity() {
     private fun openInCustomTab(url: String) {
         try {
             CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, Uri.parse(url))
-        } catch (e: Exception) {
-            openExternalApp(url)
-        }
+        } catch (e: Exception) { openExternalApp(url) }
     }
 
     private fun openExternalApp(url: String) {
@@ -408,11 +540,10 @@ class MainActivity : AppCompatActivity() {
     fun printPage() {
         val printManager = getSystemService(PRINT_SERVICE) as PrintManager
         val jobName = "${getString(R.string.app_name)} - Print"
-        val printAdapter = webView.createPrintDocumentAdapter(jobName)
-        printManager.print(jobName, printAdapter, null)
+        printManager.print(jobName, webView.createPrintDocumentAdapter(jobName), null)
     }
 
-    // ── onActivityResult: tangani hasil file picker DAN kamera ──
+    // ── onActivityResult: file picker + kamera ──
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -420,7 +551,6 @@ class MainActivity : AppCompatActivity() {
         if (requestCode != FILE_CHOOSER_REQUEST_CODE) return
 
         if (resultCode != Activity.RESULT_OK) {
-            // User cancel — juga batalkan URI kamera yang sudah dibuat
             cameraImageUri?.let { contentResolver.delete(it, null, null) }
             pendingFileCallback?.onReceiveValue(null)
             pendingFileCallback = null
@@ -432,22 +562,15 @@ class MainActivity : AppCompatActivity() {
 
         if (data != null) {
             when {
-                // Multiple file selection
                 data.clipData != null -> {
-                    val clipData = data.clipData!!
-                    for (i in 0 until clipData.itemCount) {
-                        results.add(clipData.getItemAt(i).uri)
-                    }
+                    val clip = data.clipData!!
+                    for (i in 0 until clip.itemCount) results.add(clip.getItemAt(i).uri)
                 }
-                // Single file selection
-                data.data != null -> {
-                    results.add(data.data!!)
-                }
+                data.data != null -> results.add(data.data!!)
             }
         }
 
-        // Jika tidak ada file dari picker (artinya user memilih kamera),
-        // gunakan URI kamera yang sudah dibuat sebelumnya
+        // Jika data null/kosong → user memilih kamera, pakai cameraImageUri
         if (results.isEmpty() && cameraImageUri != null) {
             results.add(cameraImageUri!!)
         }
@@ -464,7 +587,6 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             PERMISSION_REQUEST_CODE -> {
-                // Izin startup — tidak perlu tindakan khusus, izin sudah diterapkan
                 val denied = permissions.filterIndexed { i, _ ->
                     grantResults.getOrNull(i) != PackageManager.PERMISSION_GRANTED
                 }
@@ -480,25 +602,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Back Navigation (fullscreen video aware) ──
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         when {
-            customView != null -> {
-                (webView.webChromeClient as? WebChromeClient)?.onHideCustomView()
-            }
+            customView != null -> (webView.webChromeClient as? WebChromeClient)?.onHideCustomView()
             webView.canGoBack() -> webView.goBack()
             else -> super.onBackPressed()
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        webView.onPause()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        webView.onResume()
-    }
+    override fun onPause() { super.onPause(); webView.onPause() }
+    override fun onResume() { super.onResume(); webView.onResume() }
 }
