@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { generateRequestSchema } from '@web2apk/shared';
 import { generateId } from '../lib/auth';
-import { authMiddleware, generateRateLimit, generateIpRateLimit, sanitizeUrl, validatePackageName, validateAppName, turnstileMiddleware, downloadRateLimit } from '../middleware';
+import { authMiddleware, generateRateLimit, generateIpRateLimit, turnstileMiddleware, downloadRateLimit } from '../middleware';
 import type { Env, Variables } from '../index';
 import type { ZodIssue } from 'zod';
 import * as fflate from 'fflate';
