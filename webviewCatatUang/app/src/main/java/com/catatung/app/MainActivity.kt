@@ -6,12 +6,14 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.print.PrintManager
@@ -34,19 +36,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private val appUrl = "__APP_URL__"
 
-    // ── File Upload Support ──
+    // ── File Upload & Camera ──
     private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
+    private var cameraImageUri: Uri? = null           // URI output kamera yang dibuat sebelum capture
     private val FILE_CHOOSER_REQUEST_CODE = 1001
-    private val FILE_CHOOSER_PERMISSION_CODE = 1002
+    private val PERMISSION_REQUEST_CODE = 1002        // Satu kode untuk semua permission startup
 
-    // ── Fullscreen Video Support ──
+    // ── Fullscreen Video ──
     private var customView: View? = null
     private var customViewContainer: FrameLayout? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
     // __GPS_PERMISSION_CONST__
 
-    // ── Google OAuth & trusted login domains → Chrome Custom Tabs ──
+    // ── Google OAuth / social login → Chrome Custom Tabs ──
     private val oauthDomains = listOf(
         "accounts.google.com",
         "login.microsoftonline.com",
@@ -78,12 +81,46 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupSwipeRefresh()
         setupDownloadListener()
+
+        // ── Minta semua izin yang diperlukan saat aplikasi dibuka ──
+        requestRequiredPermissions()
+
         // __GPS_PERMISSION_REQUEST__
 
         if (isNetworkAvailable()) {
             webView.loadUrl(appUrl)
         } else {
             webView.loadUrl("file:///android_asset/error.html")
+        }
+    }
+
+    // ── Minta izin kamera + penyimpanan saat startup ──
+    private fun requestRequiredPermissions() {
+        val permissions = mutableListOf<String>()
+
+        // Izin kamera (selalu diperlukan karena file chooser selalu menampilkan opsi kamera)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(Manifest.permission.CAMERA)
+        }
+
+        // Izin penyimpanan — berbeda tergantung versi Android
+        if (Build.VERSION.SDK_INT >= 33) {
+            // Android 13+ → gunakan izin granular media
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+                != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+            }
+        } else {
+            // Android 12 ke bawah → izin penyimpanan lama
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
+                != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+
+        if (permissions.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), PERMISSION_REQUEST_CODE)
         }
     }
 
@@ -140,7 +177,6 @@ class MainActivity : AppCompatActivity() {
 
         webView.webChromeClient = object : WebChromeClient() {
 
-            // ── Progress bar ──
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 super.onProgressChanged(view, newProgress)
                 swipeRefreshLayout.isRefreshing = newProgress < 100
@@ -180,26 +216,15 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
 
-            // ── File Upload (all types: image, PDF, doc, video, dll.) ──
+            // ── File Upload (semua jenis file + kamera) ──
             override fun onShowFileChooser(
                 webView: WebView?,
                 filePathCallback: ValueCallback<Array<Uri>>?,
                 fileChooserParams: FileChooserParams?
             ): Boolean {
+                // Batalkan callback lama jika ada
                 pendingFileCallback?.onReceiveValue(null)
                 pendingFileCallback = filePathCallback
-
-                val needsStoragePerm = android.os.Build.VERSION.SDK_INT < 33 &&
-                    ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-
-                if (needsStoragePerm) {
-                    ActivityCompat.requestPermissions(
-                        this@MainActivity,
-                        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
-                        FILE_CHOOSER_PERMISSION_CODE
-                    )
-                    return true
-                }
 
                 openFilePicker(fileChooserParams)
                 return true
@@ -237,15 +262,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Open file picker (all types + camera) ──
+    // ── Buka file picker dengan opsi kamera ──
     private fun openFilePicker(fileChooserParams: WebChromeClient.FileChooserParams?) {
         val acceptTypes = fileChooserParams?.acceptTypes?.joinToString(",") ?: "*/*"
         val mimeType = if (acceptTypes.isBlank() || acceptTypes == ",") "*/*" else acceptTypes
 
-        // Camera intent
-        val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+        val extraIntents = mutableListOf<Intent>()
 
-        // All-file picker
+        // Buat URI output untuk kamera (agar foto full-resolution tersimpan)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED) {
+            val uri = createCameraImageUri()
+            if (uri != null) {
+                cameraImageUri = uri
+                val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                    putExtra(MediaStore.EXTRA_OUTPUT, uri)
+                }
+                extraIntents.add(cameraIntent)
+            }
+        }
+
+        // File picker (galeri + semua jenis file)
         val fileIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
             type = mimeType
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -253,17 +290,36 @@ class MainActivity : AppCompatActivity() {
         }
 
         val chooser = Intent.createChooser(fileIntent, "Pilih file atau ambil foto")
-        chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(cameraIntent))
+        if (extraIntents.isNotEmpty()) {
+            chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, extraIntents.toTypedArray())
+        }
 
         try {
             startActivityForResult(chooser, FILE_CHOOSER_REQUEST_CODE)
         } catch (e: ActivityNotFoundException) {
             pendingFileCallback?.onReceiveValue(null)
             pendingFileCallback = null
+            cameraImageUri = null
         }
     }
 
-    // ── Download Manager (export CSV, PDF, Excel, dll.) ──
+    // ── Buat URI output untuk kamera menggunakan MediaStore ──
+    private fun createCameraImageUri(): Uri? {
+        return try {
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, "foto_${System.currentTimeMillis()}.jpg")
+                put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+                }
+            }
+            contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ── Download Manager ──
     private fun setupDownloadListener() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             try {
@@ -282,7 +338,6 @@ class MainActivity : AppCompatActivity() {
                 dm.enqueue(request)
                 Toast.makeText(this, "Mengunduh $fileName...", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                // Fallback: open in browser
                 try {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                 } catch (ex: Exception) {
@@ -294,12 +349,10 @@ class MainActivity : AppCompatActivity() {
 
     // ── URL Router ──
     private fun handleUrl(url: String): Boolean {
-        // Google OAuth, social login → Chrome Custom Tabs (required: Google blocks WebView auth)
         if (oauthDomains.any { url.contains(it) }) {
             openInCustomTab(url)
             return true
         }
-        // External apps
         return when {
             url.startsWith("https://wa.me/") || url.startsWith("https://api.whatsapp.com/") ||
             url.startsWith("whatsapp://") -> { openExternalApp(url); true }
@@ -319,13 +372,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Chrome Custom Tabs — untuk Google Login / OAuth ──
     private fun openInCustomTab(url: String) {
         try {
-            CustomTabsIntent.Builder()
-                .setShowTitle(true)
-                .build()
-                .launchUrl(this, Uri.parse(url))
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, Uri.parse(url))
         } catch (e: Exception) {
             openExternalApp(url)
         }
@@ -339,7 +388,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { e.printStackTrace() }
     }
 
-    // ── Swipe-to-Refresh ──
     private fun setupSwipeRefresh() {
         swipeRefreshLayout.setOnRefreshListener { webView.reload() }
         swipeRefreshLayout.setColorSchemeResources(
@@ -350,7 +398,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // ── Network Check ──
     private fun isNetworkAvailable(): Boolean {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = cm.activeNetwork ?: return false
@@ -358,7 +405,6 @@ class MainActivity : AppCompatActivity() {
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    // ── Print Page ──
     fun printPage() {
         val printManager = getSystemService(PRINT_SERVICE) as PrintManager
         val jobName = "${getString(R.string.app_name)} - Print"
@@ -366,31 +412,68 @@ class MainActivity : AppCompatActivity() {
         printManager.print(jobName, printAdapter, null)
     }
 
-    // ── onActivityResult: file picker ──
+    // ── onActivityResult: tangani hasil file picker DAN kamera ──
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
-            pendingFileCallback?.onReceiveValue(
-                if (resultCode == Activity.RESULT_OK) {
-                    WebChromeClient.FileChooserParams.parseResult(resultCode, data)
-                } else null
-            )
+
+        if (requestCode != FILE_CHOOSER_REQUEST_CODE) return
+
+        if (resultCode != Activity.RESULT_OK) {
+            // User cancel — juga batalkan URI kamera yang sudah dibuat
+            cameraImageUri?.let { contentResolver.delete(it, null, null) }
+            pendingFileCallback?.onReceiveValue(null)
             pendingFileCallback = null
+            cameraImageUri = null
+            return
         }
+
+        val results = mutableListOf<Uri>()
+
+        if (data != null) {
+            when {
+                // Multiple file selection
+                data.clipData != null -> {
+                    val clipData = data.clipData!!
+                    for (i in 0 until clipData.itemCount) {
+                        results.add(clipData.getItemAt(i).uri)
+                    }
+                }
+                // Single file selection
+                data.data != null -> {
+                    results.add(data.data!!)
+                }
+            }
+        }
+
+        // Jika tidak ada file dari picker (artinya user memilih kamera),
+        // gunakan URI kamera yang sudah dibuat sebelumnya
+        if (results.isEmpty() && cameraImageUri != null) {
+            results.add(cameraImageUri!!)
+        }
+
+        pendingFileCallback?.onReceiveValue(
+            if (results.isNotEmpty()) results.toTypedArray() else null
+        )
+        pendingFileCallback = null
+        cameraImageUri = null
     }
 
-    // ── Permission Result: storage for file upload ──
+    // ── Permission Result ──
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
-            FILE_CHOOSER_PERMISSION_CODE -> {
-                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    openFilePicker(null)
-                } else {
-                    pendingFileCallback?.onReceiveValue(null)
-                    pendingFileCallback = null
-                    Toast.makeText(this, "Izin penyimpanan diperlukan untuk memilih file", Toast.LENGTH_SHORT).show()
+            PERMISSION_REQUEST_CODE -> {
+                // Izin startup — tidak perlu tindakan khusus, izin sudah diterapkan
+                val denied = permissions.filterIndexed { i, _ ->
+                    grantResults.getOrNull(i) != PackageManager.PERMISSION_GRANTED
+                }
+                if (denied.isNotEmpty()) {
+                    Toast.makeText(
+                        this,
+                        "Beberapa izin ditolak. Fitur upload/kamera mungkin tidak berfungsi.",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
             // __GPS_PERMISSION_RESULT__

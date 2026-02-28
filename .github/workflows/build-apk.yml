@@ -281,22 +281,16 @@ jobs:
         run: |
           # Determine which permissions to add
           GPS_ENABLED="${ENABLE_GPS:-false}"
-          CAMERA_ENABLED="${ENABLE_CAMERA:-false}"
 
-          # Build permission lines
+          # Build GPS permission lines (optional)
           GPS_PERMISSIONS=""
           if [ "$GPS_ENABLED" = "true" ]; then
             GPS_PERMISSIONS="    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />
               <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />"
           fi
 
-          CAMERA_PERMISSIONS=""
-          if [ "$CAMERA_ENABLED" = "true" ]; then
-            CAMERA_PERMISSIONS="    <uses-permission android:name=\"android.permission.CAMERA\" />
-              <uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\" />
-              <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />
-              <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />"
-          fi
+          # NOTE: CAMERA + storage permissions ALWAYS included because the file chooser
+          # always shows the camera option regardless of ENABLE_CAMERA flag.
 
           cat > webviewCatatUang/app/src/main/AndroidManifest.xml << EOF
           <?xml version="1.0" encoding="utf-8"?>
@@ -307,8 +301,11 @@ jobs:
               <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
               <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
               <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
           ${GPS_PERMISSIONS}
-          ${CAMERA_PERMISSIONS}
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
