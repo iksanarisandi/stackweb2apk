@@ -338,7 +338,7 @@ admin.post('/payments/:id/retry-build', async (c) => {
   }
 
   await c.env.DB.prepare(
-    `UPDATE generates 
+    `UPDATE generates
      SET status = 'building', error_message = NULL
      WHERE id = ?`
   )
@@ -381,6 +381,32 @@ admin.post('/payments/:id/retry-build', async (c) => {
     payment_id: paymentId,
     generate_id: payment.generate_id,
     status: 'building',
+  });
+});
+
+/**
+ * POST /api/admin/cleanup-stuck-builds
+ * Mark all stuck builds (in building status for > 1 hour) as failed
+ * Admin only - requires authentication
+ */
+admin.post('/cleanup-stuck-builds', async (c) => {
+  const adminId = c.get('userId');
+  const timeoutMs = 60 * 60 * 1000; // 1 hour
+
+  // Find and update all stuck builds in one query
+  const result = await c.env.DB.prepare(`
+    UPDATE generates
+    SET status = 'failed',
+        error_message = 'Build timed out - cleaned by admin',
+        completed_at = CURRENT_TIMESTAMP
+    WHERE status = 'building'
+      AND datetime(created_at) < datetime('now', '-' || ? || ' seconds')
+  `).bind(timeoutMs / 1000).run();
+
+  return c.json({
+    message: 'Stuck builds cleaned up successfully',
+    cleaned_count: result.meta.changes,
+    cleaned_by: adminId,
   });
 });
 

@@ -469,6 +469,41 @@ generate.get('/:id', authMiddleware, async (c) => {
     });
   }
 
+  // Auto-timeout check: if building for > 1 hour, mark as failed
+  if (result.status === 'building') {
+    const createdAt = new Date(result.created_at as string).getTime();
+    const timeoutMs = 60 * 60 * 1000; // 1 hour
+
+    if (Date.now() - createdAt > timeoutMs) {
+      await c.env.DB.prepare(`
+        UPDATE generates
+        SET status = 'failed',
+            error_message = 'Build timed out',
+            completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(generateId).run();
+
+      // Refresh data
+      const updated = await c.env.DB.prepare(
+        `SELECT id, url, build_type, app_name, package_name, icon_key, apk_key, aab_key,
+          status, error_message, download_count, enable_gps, enable_camera, version_code, version_name,
+          created_at, completed_at, amount, keystore_alias
+         FROM generates
+         WHERE id = ? AND user_id = ?`
+      )
+        .bind(generateId, userId)
+        .first();
+
+      return c.json({
+        generate: {
+          ...updated,
+          enable_gps: Boolean(updated?.enable_gps),
+          enable_camera: Boolean(updated?.enable_camera),
+        },
+      });
+    }
+  }
+
   // Convert integer flags to boolean
   const generate = {
     ...result,

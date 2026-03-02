@@ -37,6 +37,12 @@ interface RejectResponse {
   status: string;
 }
 
+interface CleanupResponse {
+  message: string;
+  cleaned_count: number;
+  cleaned_by: string;
+}
+
 // Format date to Indonesian locale
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('id-ID', {
@@ -212,6 +218,41 @@ export default function AdminPage() {
     }
   };
 
+  const handleCleanupStuckBuilds = async () => {
+    const token = getToken();
+    if (!token) return;
+
+    const stuckCount = failedPayments.filter(p => p.generate_status === 'building').length;
+    if (stuckCount === 0) {
+      setError('Tidak ada build yang stuck untuk dibersihkan.');
+      return;
+    }
+
+    if (!confirm(`Tandai ${stuckCount} build yang stuck (>1 jam) sebagai failed?`)) {
+      return;
+    }
+
+    setError(null);
+
+    const { data, error: apiError } = await authApiRequest<CleanupResponse>(
+      '/api/admin/cleanup-stuck-builds',
+      token,
+      { method: 'POST' }
+    );
+
+    if (apiError) {
+      setError(apiError.message);
+      return;
+    }
+
+    if (data) {
+      // Refresh the failed payments list to show updated statuses
+      fetchFailedPayments();
+      // Show success message briefly
+      setError(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -299,13 +340,22 @@ export default function AdminPage() {
           <h2 className="text-lg font-semibold text-gray-900">
             Generate Bermasalah
           </h2>
-          <button
-            onClick={fetchFailedPayments}
-            className="text-sm text-blue-600 hover:text-blue-800"
-          >
-            <RefreshIcon className="w-4 h-4 inline mr-1" />
-            Refresh
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={handleCleanupStuckBuilds}
+              className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+            >
+              <TrashIcon className="w-4 h-4 mr-1" />
+              Cleanup Stuck Builds
+            </button>
+            <button
+              onClick={fetchFailedPayments}
+              className="text-sm text-blue-600 hover:text-blue-800"
+            >
+              <RefreshIcon className="w-4 h-4 inline mr-1" />
+              Refresh
+            </button>
+          </div>
         </div>
 
         {failedPayments.length === 0 ? (
@@ -551,6 +601,19 @@ function XIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M6 18L18 6M6 6l12 12"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
       />
     </svg>
   );
