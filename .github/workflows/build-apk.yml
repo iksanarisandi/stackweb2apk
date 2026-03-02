@@ -178,9 +178,7 @@ jobs:
             sed -i '/\/\/ __GPS_PERMISSION_RESULT__/d' "$MAIN_KT"
           fi
 
-          # ── PWA Permissions: ALWAYS include onPermissionRequest for PWA notifications ──
-          # This is REQUIRED for PWA push notification support regardless of camera setting
-          sed -i 's|// __PWA_PERMISSION_METHOD__|override fun onPermissionRequest(request: PermissionRequest?) { runOnUiThread { request?.grant(request.resources) } }|g' "$MAIN_KT"
+          # Removed PWA Permission injection because Push Notification is not supported via WebView standards
 
           # Remove the original com/catatung source dir (will be replaced by target)
           if [ "${{ steps.package.outputs.package_path }}" != "com/catatung/app" ]; then
@@ -295,8 +293,7 @@ jobs:
               <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
               <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
               <uses-feature android:name="android.hardware.camera" android:required="false" />
-              <!-- PWA Push Notification Support (Android 13+ / API 33+) -->
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
           ${GPS_PERMISSIONS}
               <application
                   android:allowBackup="true"
@@ -311,7 +308,8 @@ jobs:
                       android:name=".MainActivity"
                       android:exported="true"
                       android:theme="@style/Theme.WebViewApp.NoActionBar"
-                      android:screenOrientation="portrait">
+                      android:screenOrientation="portrait"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />

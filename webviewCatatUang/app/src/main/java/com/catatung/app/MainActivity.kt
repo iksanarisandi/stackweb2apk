@@ -291,9 +291,27 @@ class MainActivity : AppCompatActivity() {
             }
 
             // __GEOLOCATION_METHOD__
-            // __PWA_PERMISSION_METHOD__
-            // NOTE: This method handles PWA notification permissions AND camera/WebRTC permissions
-            // It's ALWAYS included for PWA support, regardless of camera setting
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                request?.let {
+                    val granted = mutableListOf<String>()
+                    for (res in it.resources) {
+                        if (res == PermissionRequest.RESOURCE_VIDEO_CAPTURE &&
+                            ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            granted.add(res)
+                        } else if (res == PermissionRequest.RESOURCE_AUDIO_CAPTURE &&
+                            ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            granted.add(res)
+                        } else if (res == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID) {
+                            granted.add(res)
+                        }
+                    }
+                    if (granted.isNotEmpty()) {
+                        runOnUiThread { it.grant(granted.toTypedArray()) }
+                    } else {
+                        runOnUiThread { it.deny() }
+                    }
+                }
+            }
         }
     }
 
