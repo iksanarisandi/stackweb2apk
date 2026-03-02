@@ -32,7 +32,6 @@ import java.io.File
 import java.io.FileOutputStream
 // __GPS_IMPORT__
 // __CAMERA_IMPORT__
-import androidx.core.app.NotificationManagerCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -292,15 +291,8 @@ class MainActivity : AppCompatActivity() {
 
             // __GEOLOCATION_METHOD__
             // __CAMERA_PERMISSION_METHOD__
-
-            // ── PWA Push Notification Permission Handler ──
-            // Handle permission request dari PWA (notification, dll)
-            // Ini memungkinkan PWA meminta izin notifikasi push
-            override fun onPermissionRequest(request: PermissionRequest?) {
-                // Grant semua permission yang diminta PWA
-                // Termasuk NOTIFICATION permission untuk push notification
-                request?.grant(request.resources)
-            }
+            // NOTE: __CAMERA_PERMISSION_METHOD__ placeholder handles ALL permissions
+            // including PWA notification permissions via onPermissionRequest()
         }
     }
 
