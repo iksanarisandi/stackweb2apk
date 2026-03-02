@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { WhatsAppFloat } from '@/components/WhatsAppFloat';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -114,6 +115,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} h-full bg-gray-50 antialiased`}>
         {children}
+        <WhatsAppFloat />
       </body>
     </html>
   );

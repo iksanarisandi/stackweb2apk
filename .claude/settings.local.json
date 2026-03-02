@@ -27,7 +27,9 @@
       "WebSearch",
       "Bash(gradle wrapper:*)",
       "Bash(mkdir:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx:*)"
     ]
   }
 }
