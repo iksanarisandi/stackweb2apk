@@ -32,6 +32,7 @@ import java.io.File
 import java.io.FileOutputStream
 // __GPS_IMPORT__
 // __CAMERA_IMPORT__
+import androidx.core.app.NotificationManagerCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -186,6 +187,12 @@ class MainActivity : AppCompatActivity() {
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         }
 
+        // ── Setup Cookie Manager untuk Service Worker & PWA ──
+        // Service Worker memerlukan third-party cookies untuk persistensi
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        cookieManager.setAcceptThirdPartyCookies(webView, true)
+
         // JavaScript interface untuk menangani blob: URL download
         webView.addJavascriptInterface(BlobDownloadInterface(), "AndroidDownload")
 
@@ -285,6 +292,15 @@ class MainActivity : AppCompatActivity() {
 
             // __GEOLOCATION_METHOD__
             // __CAMERA_PERMISSION_METHOD__
+
+            // ── PWA Push Notification Permission Handler ──
+            // Handle permission request dari PWA (notification, dll)
+            // Ini memungkinkan PWA meminta izin notifikasi push
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                // Grant semua permission yang diminta PWA
+                // Termasuk NOTIFICATION permission untuk push notification
+                request?.grant(request.resources)
+            }
         }
     }
 
