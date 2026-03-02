@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { authApiRequest, getToken } from '@/lib';
 import type { Generate, GenerateStatus, BuildType } from '@web2apk/shared';
 import KeystoreDownloadModal from './generate/KeystoreDownloadModal';
+
+// Polling configuration
+const POLLING_INTERVAL = 5000; // 5 seconds
+const MAX_POLLING_TIME = 30 * 60 * 1000; // 30 minutes max
 
 interface GeneratesResponse {
   generates: Generate[];
@@ -57,10 +61,95 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [keystoreModalId, setKeystoreModalId] = useState<string | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingStartTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetchGenerates();
   }, []);
+
+  // Auto-polling effect for building generates
+  useEffect(() => {
+    const hasBuildingGenerates = generates.some(g => g.status === 'building');
+
+    if (hasBuildingGenerates && !isPolling) {
+      // Start polling
+      setIsPolling(true);
+      pollingStartTimeRef.current = Date.now();
+
+      pollingIntervalRef.current = setInterval(async () => {
+        // Check max polling time
+        if (pollingStartTimeRef.current && Date.now() - pollingStartTimeRef.current > MAX_POLLING_TIME) {
+          stopPolling();
+          return;
+        }
+
+        // Silent refresh without loading state
+        await silentRefreshGenerates();
+      }, POLLING_INTERVAL);
+
+    } else if (!hasBuildingGenerates && isPolling) {
+      // Stop polling when no building generates
+      stopPolling();
+    }
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [generates, isPolling]);
+
+  // Pause polling when tab is not visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab hidden - pause polling
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      } else {
+        // Tab visible - resume polling if needed
+        const hasBuildingGenerates = generates.some(g => g.status === 'building');
+        if (hasBuildingGenerates && isPolling && !pollingIntervalRef.current) {
+          pollingIntervalRef.current = setInterval(async () => {
+            await silentRefreshGenerates();
+          }, POLLING_INTERVAL);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [generates, isPolling]);
+
+  const stopPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    setIsPolling(false);
+    pollingStartTimeRef.current = null;
+  };
+
+  const silentRefreshGenerates = async () => {
+    const token = getToken();
+    if (!token) return;
+
+    const { data, error: apiError } = await authApiRequest<GeneratesResponse>(
+      '/api/generate',
+      token
+    );
+
+    if (data && !apiError) {
+      setGenerates(data.generates);
+    }
+  };
 
   const fetchGenerates = async () => {
     const token = getToken();
@@ -282,9 +371,17 @@ function GenerateCard({
           {generate.status === 'building' && (
             <div className="mt-3 p-3 bg-purple-50 rounded-lg flex items-center">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600 mr-3"></div>
-              <p className="text-sm text-purple-700">
-                APK sedang di-build. Estimasi waktu: 3-5 menit
-              </p>
+              <div className="flex-1">
+                <p className="text-sm text-purple-700">
+                  APK sedang di-build. Estimasi waktu: 3-5 menit
+                </p>
+                <p className="text-xs text-purple-600 mt-1 flex items-center">
+                  <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Auto-refresh aktif • Halaman akan otomatis update
+                </p>
+              </div>
             </div>
           )}
 
