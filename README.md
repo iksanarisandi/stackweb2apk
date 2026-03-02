@@ -5,10 +5,11 @@ Web2APK adalah platform SaaS berbasis Cloudflare yang mengubah website menjadi a
 ## 📋 Fitur Utama
 
 - ✅ Konversi website ke Android WebView APK/AAB
+- 🔔 **PWA Push Notification Support** - Website PWA dengan Service Worker dapat mengirim push notification
 - 🎨 Custom icon (512x512 PNG) dan nama aplikasi
 - 📦 Signed APK/AAB siap upload ke Play Store
 - 🔐 Sistem autentikasi user dengan JWT
-- 💳 Pembayaran QRIS Rp35.000 per generate
+- 💳 Pembayaran QRIS Rp150.000 per generate
 - 🤖 Telegram Bot untuk admin management
 - 🚀 Full stack Cloudflare (Workers + D1 + R2)
 - ⚡ Rate limiting dan security headers
