@@ -84,7 +84,7 @@ class MainActivity : AppCompatActivity() {
         setupWebView()
         setupSwipeRefresh()
         setupDownloadListener()
-        requestRequiredPermissions()
+        // __CAMERA_PERMISSION_REQUEST__
 
         // __GPS_PERMISSION_REQUEST__
 

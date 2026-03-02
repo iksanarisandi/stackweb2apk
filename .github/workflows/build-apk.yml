@@ -178,6 +178,13 @@ jobs:
             sed -i '/\/\/ __GPS_PERMISSION_RESULT__/d' "$MAIN_KT"
           fi
 
+          # ── Camera/Storage: request permission in onCreate ──
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            sed -i 's|// __CAMERA_PERMISSION_REQUEST__|requestRequiredPermissions()|g' "$MAIN_KT"
+          else
+            sed -i '/\/\/ __CAMERA_PERMISSION_REQUEST__/d' "$MAIN_KT"
+          fi
+
           # Removed PWA Permission injection because Push Notification is not supported via WebView standards
 
           # Remove the original com/catatung source dir (will be replaced by target)
@@ -269,6 +276,7 @@ jobs:
         run: |
           # Determine which permissions to add
           GPS_ENABLED="${ENABLE_GPS:-false}"
+          CAMERA_ENABLED="${ENABLE_CAMERA:-false}"
 
           # Build GPS permission lines (optional)
           GPS_PERMISSIONS=""
@@ -277,8 +285,15 @@ jobs:
               <uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\" />"
           fi
 
-          # NOTE: CAMERA + storage permissions ALWAYS included because the file chooser
-          # always shows the camera option regardless of ENABLE_CAMERA flag.
+          # Build Camera/Storage permission lines (optional)
+          CAMERA_PERMISSIONS=""
+          if [ "$CAMERA_ENABLED" = "true" ]; then
+            CAMERA_PERMISSIONS="    <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"28\" />
+              <uses-permission android:name=\"android.permission.CAMERA\" />
+              <uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\" />
+              <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />
+              <uses-feature android:name=\"android.hardware.camera\" android:required=\"false\" />"
+          fi
 
           cat > webviewCatatUang/app/src/main/AndroidManifest.xml << EOF
           <?xml version="1.0" encoding="utf-8"?>
@@ -287,14 +302,10 @@ jobs:
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
               <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
               <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
-              <uses-permission android:name="android.permission.CAMERA" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-              <uses-feature android:name="android.hardware.camera" android:required="false" />
 
           ${GPS_PERMISSIONS}
+          ${CAMERA_PERMISSIONS}
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
