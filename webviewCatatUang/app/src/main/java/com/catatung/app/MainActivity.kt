@@ -31,7 +31,8 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import java.io.File
 import java.io.FileOutputStream
 // __GPS_IMPORT__
-// __CAMERA_IMPORT__
+// Import PermissionRequest untuk PWA notifications (selalu diperlukan)
+import android.webkit.PermissionRequest
 
 class MainActivity : AppCompatActivity() {
 
@@ -290,9 +291,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             // __GEOLOCATION_METHOD__
-            // __CAMERA_PERMISSION_METHOD__
-            // NOTE: __CAMERA_PERMISSION_METHOD__ placeholder handles ALL permissions
-            // including PWA notification permissions via onPermissionRequest()
+            // __PWA_PERMISSION_METHOD__
+            // NOTE: This method handles PWA notification permissions AND camera/WebRTC permissions
+            // It's ALWAYS included for PWA support, regardless of camera setting
         }
     }
 

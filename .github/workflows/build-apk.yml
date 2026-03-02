@@ -178,19 +178,9 @@ jobs:
             sed -i '/\/\/ __GPS_PERMISSION_RESULT__/d' "$MAIN_KT"
           fi
 
-          # ── Camera: import ──
-          if [ "$CAMERA_ENABLED" = "true" ]; then
-            sed -i 's|// __CAMERA_IMPORT__|import android.webkit.PermissionRequest|g' "$MAIN_KT"
-          else
-            sed -i '/\/\/ __CAMERA_IMPORT__/d' "$MAIN_KT"
-          fi
-
-          # ── Camera: WebRTC permission method ──
-          if [ "$CAMERA_ENABLED" = "true" ]; then
-            sed -i 's|// __CAMERA_PERMISSION_METHOD__|override fun onPermissionRequest(request: PermissionRequest?) { runOnUiThread { request?.grant(request.resources) } }|g' "$MAIN_KT"
-          else
-            sed -i '/\/\/ __CAMERA_PERMISSION_METHOD__/d' "$MAIN_KT"
-          fi
+          # ── PWA Permissions: ALWAYS include onPermissionRequest for PWA notifications ──
+          # This is REQUIRED for PWA push notification support regardless of camera setting
+          sed -i 's|// __PWA_PERMISSION_METHOD__|override fun onPermissionRequest(request: PermissionRequest?) { runOnUiThread { request?.grant(request.resources) } }|g' "$MAIN_KT"
 
           # Remove the original com/catatung source dir (will be replaced by target)
           if [ "${{ steps.package.outputs.package_path }}" != "com/catatung/app" ]; then

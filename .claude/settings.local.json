@@ -23,7 +23,11 @@
       "Bash(git rm:*)",
       "Bash(pnpm --filter @web2apk/web run build:*)",
       "Bash(head:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "WebSearch",
+      "Bash(gradle wrapper:*)",
+      "Bash(mkdir:*)",
+      "Bash(rm:*)"
     ]
   }
 }
