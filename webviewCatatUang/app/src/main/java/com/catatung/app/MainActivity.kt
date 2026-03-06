@@ -15,7 +15,6 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Message
 import android.os.Environment
 import android.print.PrintManager
 import android.provider.MediaStore
@@ -197,6 +196,9 @@ class MainActivity : AppCompatActivity() {
         // JavaScript interface untuk menangani blob: URL download
         webView.addJavascriptInterface(BlobDownloadInterface(), "AndroidDownload")
 
+        // JavaScript interface untuk menangani external links (target="_blank", window.open)
+        webView.addJavascriptInterface(ExternalLinkInterface(), "AndroidExternalLink")
+
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
@@ -208,6 +210,8 @@ class MainActivity : AppCompatActivity() {
                 swipeRefreshLayout.isRefreshing = false
                 // Inject JS untuk mencegat blob: URL download sebelum sampai ke download listener
                 injectBlobDownloadInterceptor()
+                // Inject JS untuk menangani target="_blank" links
+                injectExternalLinkInterceptor()
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -289,32 +293,6 @@ class MainActivity : AppCompatActivity() {
                 customViewCallback?.onCustomViewHidden()
                 webView.visibility = View.VISIBLE
                 swipeRefreshLayout.visibility = View.VISIBLE
-            }
-
-            // ── Handle target="_blank" and window.open() for external links ──
-            override fun onCreateWindow(
-                view: WebView?,
-                isDialog: Boolean,
-                isUserGesture: Boolean,
-                resultMsg: Message?
-            ): Boolean {
-                val url = resultMsg?.data?.getString("url")
-                if (url != null) {
-                    // Handle external links like WhatsApp, tel, mailto, etc.
-                    if (handleUrl(url)) {
-                        return true
-                    }
-                    // For other URLs, open in external browser
-                    try {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        startActivity(intent)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                }
-                return false
             }
 
             // __GEOLOCATION_METHOD__
@@ -493,6 +471,39 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
+    // Inject JS untuk menangani target="_blank" links dan window.open()
+    private fun injectExternalLinkInterceptor() {
+        val js = """
+            (function() {
+                if (window.__androidExternalLinkActive) return;
+                window.__androidExternalLinkActive = true;
+
+                // Override window.open
+                var originalOpen = window.open;
+                window.open = function(url, target, features) {
+                    // Kirim URL ke native handler
+                    if (url) {
+                        AndroidExternalLink.handleUrl(url);
+                    }
+                    return null; // Block popup
+                };
+
+                // Intercept semua link dengan target="_blank" atau target lainnya
+                document.addEventListener('click', function(e) {
+                    var el = e.target;
+                    // Telusuri ke atas mencari elemen <a>
+                    while (el && el.tagName !== 'A') el = el.parentElement;
+                    if (el && el.target && el.target !== '_self' && el.href) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        AndroidExternalLink.handleUrl(el.href);
+                    }
+                }, true);
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
     // Fallback: dipanggil dari download listener jika blob URL sampai sini
     // (misal download dipicu programatik bukan klik anchor)
     private fun downloadBlobUrl(blobUrl: String, mimeType: String, contentDisposition: String) {
@@ -598,6 +609,28 @@ class MainActivity : AppCompatActivity() {
         fun onError(message: String) {
             runOnUiThread {
                 Toast.makeText(this@MainActivity, "Unduhan gagal: $message", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // ── JavaScript Interface untuk external links (target="_blank", window.open) ──
+    inner class ExternalLinkInterface {
+
+        @JavascriptInterface
+        fun handleUrl(url: String) {
+            runOnUiThread {
+                // Route URL ke handler yang tepat
+                if (!handleUrl(url)) {
+                    // Jika tidak ditangani oleh handleUrl, buka di browser eksternal
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MainActivity, "Tidak dapat membuka link", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }
