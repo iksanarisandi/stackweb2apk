@@ -31,7 +31,7 @@ jobs:
         run: |
           CONFIG=$(curl -s "${API_URL}/api/generate/${GENERATE_ID}/build-config")
           echo "Build config received"
-          
+
           # Parse and export as environment variables
           echo "APP_URL=$(echo $CONFIG | jq -r '.url')" >> $GITHUB_ENV
           echo "BUILD_TYPE=$(echo $CONFIG | jq -r '.build_type')" >> $GITHUB_ENV
@@ -43,13 +43,28 @@ jobs:
           echo "KEYSTORE_KEY=$(echo $CONFIG | jq -r '.keystore_key // empty')" >> $GITHUB_ENV
           echo "ENABLE_GPS=$(echo $CONFIG | jq -r '.enable_gps')" >> $GITHUB_ENV
           echo "ENABLE_CAMERA=$(echo $CONFIG | jq -r '.enable_camera')" >> $GITHUB_ENV
-          
+
           echo "Build Type: $BUILD_TYPE"
           echo "App Name: $APP_NAME"
           echo "Package Name: $PACKAGE_NAME"
           echo "Version: $VERSION_NAME ($VERSION_CODE)"
           echo "Enable GPS: $ENABLE_GPS"
           echo "Enable Camera: $ENABLE_CAMERA"
+
+      - name: Validate package name
+        run: |
+          # Kotlin reserved keywords that cannot be used as package identifiers
+          KOTLIN_KEYWORDS="in|is|as|if|else|for|while|do|when|return|break|continue|object|package|import|class|interface|enum|open|override|public|private|protected|internal|abstract|final|companion|init|this|super|true|false|null|it|typealias|val|var|fun|try|catch|finally|throw|volatile|transient|default|sealed|inner|data|inline|external|actual|expect|constructor|suspend|tailrec|operator|infix|out|reified|vararg|crossinline|lateinit"
+
+          # Check each segment of the package name
+          for segment in $(echo "$PACKAGE_NAME" | tr '.' ' '); do
+            if echo "$segment" | grep -qE "^($KOTLIN_KEYWORDS)$"; then
+              echo "Error: Package name '$PACKAGE_NAME' contains '$segment' which is a reserved keyword in Kotlin"
+              echo "Package segments cannot be: $KOTLIN_KEYWORDS"
+              exit 1
+            fi
+          done
+          echo "Package name validation passed"
 
       - name: Checkout repository
         uses: actions/checkout@v4

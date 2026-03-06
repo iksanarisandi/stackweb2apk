@@ -35,15 +35,32 @@ export const urlSchema = z
 /**
  * Package name validation schema
  * Must match Android package name format: com.domain.name
+ * Cannot contain Kotlin reserved keywords as package segments
  * Validates: Requirements 3.3
  */
+const KOTLIN_RESERVED_KEYWORDS = [
+  'in', 'is', 'as', 'if', 'else', 'for', 'while', 'do', 'when', 'return',
+  'break', 'continue', 'object', 'package', 'import', 'class', 'interface',
+  'enum', 'open', 'override', 'public', 'private', 'protected', 'internal',
+  'abstract', 'final', 'companion', 'init', 'this', 'super', 'true', 'false',
+  'null', 'it', 'typealias', 'val', 'var', 'fun', 'try', 'catch', 'finally',
+  'throw', 'volatile', 'transient', 'constructor', 'suspend', 'tailrec',
+  'operator', 'infix', 'out', 'reified', 'vararg', 'crossinline', 'lateinit'
+];
+
 export const packageNameSchema = z
   .string()
   .min(1, 'Package name is required')
   .regex(
     /^com\.[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/,
     'Package name must follow format: com.domain.name (lowercase letters and numbers only)'
-  );
+  )
+  .refine((packageName) => {
+    const segments = packageName.split('.');
+    return !segments.some(segment => KOTLIN_RESERVED_KEYWORDS.includes(segment));
+  }, {
+    message: `Package name cannot contain Kotlin reserved keywords: ${KOTLIN_RESERVED_KEYWORDS.join(', ')}`
+  });
 
 /**
  * App name validation schema
