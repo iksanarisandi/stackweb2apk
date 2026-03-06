@@ -620,7 +620,7 @@ class MainActivity : AppCompatActivity() {
         fun handleUrl(url: String) {
             runOnUiThread {
                 // Route URL ke handler yang tepat
-                if (!handleUrl(url)) {
+                if (!this@MainActivity.handleUrl(url)) {
                     // Jika tidak ditangani oleh handleUrl, buka di browser eksternal
                     try {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
