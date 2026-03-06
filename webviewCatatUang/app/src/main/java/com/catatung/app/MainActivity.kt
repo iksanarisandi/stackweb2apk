@@ -15,6 +15,7 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Message
 import android.os.Environment
 import android.print.PrintManager
 import android.provider.MediaStore
@@ -288,6 +289,32 @@ class MainActivity : AppCompatActivity() {
                 customViewCallback?.onCustomViewHidden()
                 webView.visibility = View.VISIBLE
                 swipeRefreshLayout.visibility = View.VISIBLE
+            }
+
+            // ── Handle target="_blank" and window.open() for external links ──
+            override fun onCreateWindow(
+                view: WebView?,
+                isDialog: Boolean,
+                isUserGesture: Boolean,
+                resultMsg: Message?
+            ): Boolean {
+                val url = resultMsg?.data?.getString("url")
+                if (url != null) {
+                    // Handle external links like WhatsApp, tel, mailto, etc.
+                    if (handleUrl(url)) {
+                        return true
+                    }
+                    // For other URLs, open in external browser
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                return false
             }
 
             // __GEOLOCATION_METHOD__
