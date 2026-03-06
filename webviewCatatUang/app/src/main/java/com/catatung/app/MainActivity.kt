@@ -671,7 +671,28 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             })
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) {
+            // Jika aplikasi pihak ketiga tidak ditemukan
+            if (url.startsWith("whatsapp://")) {
+                // Fallback ke WhatsApp Web jika aplikasi WhatsApp tidak ada
+                var fallbackUrl = "https://wa.me/"
+                if (url.contains("phone=")) {
+                    fallbackUrl = url.replace("whatsapp://send?phone=", "https://wa.me/")
+                } else if (url.contains("text=")) {
+                    fallbackUrl = url.replace("whatsapp://send?text=", "https://wa.me/?text=")
+                }
+                
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+                } catch (ex: Exception) {
+                    Toast.makeText(this, "Tidak dapat membuka tautan WhatsApp", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "Aplikasi untuk membuka tautan ini tidak ditemukan", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun setupSwipeRefresh() {

@@ -321,6 +321,28 @@ jobs:
 
           ${GPS_PERMISSIONS}
           ${CAMERA_PERMISSIONS}
+          
+              <!-- Queries for external apps (e.g. WhatsApp, Browser, Mail, Telp) for Android 11+ (API 30+) -->
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <category android:name="android.intent.category.BROWSABLE" />
+                      <data android:scheme="https" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="whatsapp" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="tel" />
+                  </intent>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="mailto" />
+                  </intent>
+              </queries>
+              
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
