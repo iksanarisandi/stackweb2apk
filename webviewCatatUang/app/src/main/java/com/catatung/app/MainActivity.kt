@@ -534,35 +534,58 @@ class MainActivity : AppCompatActivity() {
 
                 // Fungsi untuk mengubah warna status bar
                 function updateStatusBarColor() {
-                    // Coba ambil warna dari header, navbar, atau body
-                    var header = document.querySelector('header') ||
-                                 document.querySelector('.header') ||
-                                 document.querySelector('.navbar') ||
-                                 document.querySelector('[class*="header"]') ||
-                                 document.querySelector('[class*="navbar"]') ||
-                                 document.querySelector('[id*="header"]') ||
-                                 document.querySelector('[id*="navbar"]') ||
-                                 document.body;
+                    if (typeof AndroidStatusBar === 'undefined') return;
 
-                    if (header) {
-                        var color = getBackgroundColor(header);
-                        if (color && typeof AndroidStatusBar !== 'undefined') {
-                            // Convert rgb/rgba to hex
-                            if (color.startsWith('rgb')) {
-                                var rgb = color.match(/\d+/g);
-                                if (rgb && rgb.length >= 3) {
-                                    var hex = '#' +
-                                        ('0' + parseInt(rgb[0], 10).toString(16)).slice(-2) +
-                                        ('0' + parseInt(rgb[1], 10).toString(16)).slice(-2) +
-                                        ('0' + parseInt(rgb[2], 10).toString(16)).slice(-2);
-                                    AndroidStatusBar.setColor(hex);
-                                }
-                            } else if (color.startsWith('#')) {
-                                if (color.length === 4) {
-                                    color = '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
-                                }
-                                AndroidStatusBar.setColor(color);
+                    var color = null;
+
+                    // 1. Prioritas 1: Cek meta tag theme-color (standar Chrome/Safari)
+                    var themeColorMeta = document.querySelector('meta[name="theme-color"]');
+                    if (themeColorMeta && themeColorMeta.content) {
+                        color = themeColorMeta.content;
+                    }
+
+                    // 2. Prioritas 2: Cek meta tag apple-mobile-web-app-status-bar-style
+                    if (!color) {
+                        var appleMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+                        if (appleMeta && appleMeta.content === 'black-translucent') {
+                            color = '#000000';
+                        }
+                    }
+
+                    // 3. Prioritas 3: Cek warna background dari header, navbar, atau body
+                    if (!color) {
+                        var header = document.querySelector('header') ||
+                                     document.querySelector('.header') ||
+                                     document.querySelector('.navbar') ||
+                                     document.querySelector('[class*="header"]') ||
+                                     document.querySelector('[class*="navbar"]') ||
+                                     document.querySelector('[id*="header"]') ||
+                                     document.querySelector('[id*="navbar"]') ||
+                                     document.body;
+
+                        if (header) {
+                            color = getBackgroundColor(header);
+                        }
+                    }
+
+                    // Apply color jika ditemukan
+                    if (color) {
+                        // Convert rgb/rgba to hex
+                        if (color.startsWith('rgb')) {
+                            var rgb = color.match(/\d+/g);
+                            if (rgb && rgb.length >= 3) {
+                                var hex = '#' +
+                                    ('0' + parseInt(rgb[0], 10).toString(16)).slice(-2) +
+                                    ('0' + parseInt(rgb[1], 10).toString(16)).slice(-2) +
+                                    ('0' + parseInt(rgb[2], 10).toString(16)).slice(-2);
+                                AndroidStatusBar.setColor(hex);
                             }
+                        } else if (color.startsWith('#')) {
+                            // Expand shorthand hex (#fff -> #ffffff)
+                            if (color.length === 4) {
+                                color = '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+                            }
+                            AndroidStatusBar.setColor(color);
                         }
                     }
                 }
@@ -597,6 +620,52 @@ class MainActivity : AppCompatActivity() {
                     throttledUpdate();
                 });
                 observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['class', 'style']
+                });
+
+                // Observe perubahan pada meta tag theme-color
+                var metaObserver = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        if (mutation.type === 'attributes' && mutation.attributeName === 'content') {
+                            updateStatusBarColor();
+                        }
+                    });
+                });
+
+                // Monitor semua meta tag yang sudah ada dan yang akan ditambahkan
+                function observeMetaTags() {
+                    var metaTags = document.querySelectorAll('meta[name="theme-color"], meta[name="apple-mobile-web-app-status-bar-style"]');
+                    metaTags.forEach(function(meta) {
+                        metaObserver.observe(meta, { attributes: true });
+                    });
+                }
+                observeMetaTags();
+
+                // Re-observe saat DOM berubah (untuk meta tag baru)
+                var metaTagObserver = new MutationObserver(function(mutations) {
+                    var shouldReobserve = false;
+                    mutations.forEach(function(mutation) {
+                        if (mutation.addedNodes.length > 0) {
+                            mutation.addedNodes.forEach(function(node) {
+                                if (node.nodeType === 1 && (
+                                    node.tagName === 'META' &&
+                                    (node.getAttribute('name') === 'theme-color' ||
+                                     node.getAttribute('name') === 'apple-mobile-web-app-status-bar-style')
+                                )) {
+                                    shouldReobserve = true;
+                                }
+                            });
+                        }
+                    });
+                    if (shouldReobserve) {
+                        observeMetaTags();
+                        updateStatusBarColor();
+                    }
+                });
+                metaTagObserver.observe(document.documentElement, {
                     childList: true,
                     subtree: true
                 });
