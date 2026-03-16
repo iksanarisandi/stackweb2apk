@@ -27,7 +27,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.splashscreen.SplashScreen
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import java.io.File
 import java.io.FileOutputStream
@@ -66,10 +65,6 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Android 12+: Disable splash screen immediately
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            SplashScreen.installSplashScreen(this).setKeepOnScreenCondition { false }
-        }
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
