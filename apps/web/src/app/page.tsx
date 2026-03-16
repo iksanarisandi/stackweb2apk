@@ -245,7 +245,7 @@ export default function Home() {
           {/* Demo Link */}
           <div className="mt-6">
             <a
-              href="https://s.id/ePm87"
+              href="https://www.mediafire.com/file/lkg2bw201fzv9me/web2apk.apk/file"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center text-blue-600 hover:text-blue-700 font-medium"
@@ -341,7 +341,7 @@ export default function Home() {
           <p className="text-center text-gray-600 mb-12 max-w-xl mx-auto">
             Solusi tercepat untuk convert website to app android tanpa coding
           </p>
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             <article className="card text-center">
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
                 <svg
@@ -417,6 +417,31 @@ export default function Home() {
               <p className="text-gray-600">
                 APK sudah ditandatangani, siap diinstal langsung di HP Android
                 manapun
+              </p>
+            </article>
+
+            <article className="card text-center">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <svg
+                  className="w-6 h-6 text-orange-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                Ukuran Sangat Kecil
+              </h3>
+              <p className="text-gray-600">
+                Aplikasi ringan dan tidak memakan memori, ukuran hasil APK hanya sekitar 1.5MB
               </p>
             </article>
           </div>

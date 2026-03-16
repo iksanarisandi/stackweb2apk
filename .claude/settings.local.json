@@ -29,7 +29,11 @@
       "Bash(mkdir:*)",
       "Bash(rm:*)",
       "Bash(pnpm:*)",
-      "Bash(npx:*)"
+      "Bash(npx:*)",
+      "Bash(unzip:*)",
+      "Bash(gh run:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(cd:*)"
     ]
   }
 }
