@@ -2,6 +2,7 @@ package __PACKAGE_NAME__
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.AlertDialog
 import android.app.DownloadManager
@@ -23,6 +24,7 @@ import android.util.Base64
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -32,6 +34,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.core.view.WindowInsetsControllerCompat
 import java.io.File
 import java.io.FileOutputStream
 // __GPS_IMPORT__
@@ -549,15 +552,34 @@ class MainActivity : AppCompatActivity() {
                                 var rgb = color.match(/\d+/g);
                                 if (rgb && rgb.length >= 3) {
                                     var hex = '#' +
-                                        ('0' + parseInt(rgb[0]).toString(16)).slice(-2) +
-                                        ('0' + parseInt(rgb[1]).toString(16)).slice(-2) +
-                                        ('0' + parseInt(rgb[2]).toString(16)).slice(-2);
+                                        ('0' + parseInt(rgb[0], 10).toString(16)).slice(-2) +
+                                        ('0' + parseInt(rgb[1], 10).toString(16)).slice(-2) +
+                                        ('0' + parseInt(rgb[2], 10).toString(16)).slice(-2);
                                     AndroidStatusBar.setColor(hex);
                                 }
                             } else if (color.startsWith('#')) {
+                                if (color.length === 4) {
+                                    color = '#' + color[1] + color[1] + color[2] + color[2] + color[3] + color[3];
+                                }
                                 AndroidStatusBar.setColor(color);
                             }
                         }
+                    }
+                }
+
+                var timeout;
+                var lastRun = 0;
+                function throttledUpdate() {
+                    var now = Date.now();
+                    if (now - lastRun >= 250) {
+                        updateStatusBarColor();
+                        lastRun = now;
+                    } else {
+                        clearTimeout(timeout);
+                        timeout = setTimeout(function() {
+                            updateStatusBarColor();
+                            lastRun = Date.now();
+                        }, 250);
                     }
                 }
 
@@ -570,17 +592,17 @@ class MainActivity : AppCompatActivity() {
                     });
                 }
 
-                // Observe perubahan DOM untuk update warna
+                // Observe perubahan DOM untuk update warna dengan debounce
                 var observer = new MutationObserver(function(mutations) {
-                    updateStatusBarColor();
+                    throttledUpdate();
                 });
                 observer.observe(document.documentElement, {
                     childList: true,
                     subtree: true
                 });
 
-                // Update saat scroll (untuk sticky header)
-                window.addEventListener('scroll', updateStatusBarColor);
+                // Update saat scroll dengan throttle (untuk sticky header)
+                window.addEventListener('scroll', throttledUpdate, { passive: true });
             })();
         """.trimIndent()
         webView.evaluateJavascript(js, null)
@@ -872,30 +894,47 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() { super.onResume(); webView.onResume() }
 
     // ── Status Bar Color Control (follow web content) ──
+    private var currentStatusBarColor = Color.TRANSPARENT
+    private val defaultStatusBarColor = Color.parseColor("#6200EE") // Default purple
+
     fun setStatusBarColor(color: String) {
         runOnUiThread {
             try {
-                val parsedColor = Color.parseColor(color)
-                window.statusBarColor = parsedColor
+                val targetColor = Color.parseColor(color)
 
-                // Set status bar content color based on brightness
-                val darkness = 1 - (0.299 * Color.red(parsedColor) + 0.587 * Color.green(parsedColor) + 0.114 * Color.blue(parsedColor)) / 255
-                @Suppress("DEPRECATION")
-                if (darkness < 0.5) {
-                    // Light background - use dark icons
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-                    }
-                } else {
-                    // Dark background - use light icons
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-                    }
+                // Animate color transition for smooth effect (300ms)
+                val colorAnimator = ValueAnimator.ofArgb(currentStatusBarColor, targetColor)
+                colorAnimator.duration = 300
+                colorAnimator.interpolator = DecelerateInterpolator()
+                colorAnimator.addUpdateListener { animator ->
+                    val animatedColor = animator.animatedValue as Int
+                    window.statusBarColor = animatedColor
+                }
+                colorAnimator.start()
+
+                currentStatusBarColor = targetColor
+
+                // Set status bar content color based on brightness (light/dark icons)
+                val darkness = 1 - (0.299 * Color.red(targetColor) + 0.587 * Color.green(targetColor) + 0.114 * Color.blue(targetColor)) / 255
+                val isLightBackground = darkness < 0.5
+
+                // Use WindowInsetsControllerCompat for API 30+ (better backward compatibility)
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController?.let {
+                    it.isAppearanceLightStatusBars = isLightBackground
+                    it.isAppearanceLightNavigationBars = isLightBackground
                 }
             } catch (e: Exception) {
-                // Invalid color, ignore
+                // Invalid color, use fallback
+                setStatusBarColorInternal(defaultStatusBarColor)
             }
         }
+    }
+
+    private fun setStatusBarColorInternal(color: Int) {
+        window.statusBarColor = color
+        currentStatusBarColor = color
     }
 
     // ── JavaScript Interface untuk Status Bar ──
