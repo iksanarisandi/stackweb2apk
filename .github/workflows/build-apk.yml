@@ -407,9 +407,10 @@ jobs:
                   <item name="windowActionBar">false</item>
                   <item name="windowNoTitle">true</item>
                   <item name="android:windowFullscreen">true</item>
-                  <!-- Android 12+: Disable splash screen icon -->
-                  <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@null</item>
-                  <item name="android:windowSplashScreenBackground" tools:targetApi="31">@android:color/transparent</item>
+                  <!-- Android 12+: Hide splash screen icon using transparent drawable -->
+                  <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@drawable/transparent_splash</item>
+                  <item name="android:windowSplashScreenBackground" tools:targetApi="31">@android:color/white</item>
+                  <item name="android:windowSplashScreenIconBackgroundColor" tools:targetApi="31">@android:color/white</item>
               </style>
           </resources>
           EOF
