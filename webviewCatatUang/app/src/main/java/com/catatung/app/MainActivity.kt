@@ -10,6 +10,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
@@ -20,6 +21,8 @@ import android.print.PrintManager
 import android.provider.MediaStore
 import android.util.Base64
 import android.view.View
+import android.view.Window
+import android.view.WindowManager
 import android.webkit.*
 import android.widget.FrameLayout
 import android.widget.Toast
@@ -27,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import java.io.File
 import java.io.FileOutputStream
@@ -199,6 +203,9 @@ class MainActivity : AppCompatActivity() {
         // JavaScript interface untuk menangani external links (target="_blank", window.open)
         webView.addJavascriptInterface(ExternalLinkInterface(), "AndroidExternalLink")
 
+        // JavaScript interface untuk mengubah warna status bar
+        webView.addJavascriptInterface(StatusBarInterface(), "AndroidStatusBar")
+
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
@@ -212,6 +219,8 @@ class MainActivity : AppCompatActivity() {
                 injectBlobDownloadInterceptor()
                 // Inject JS untuk menangani target="_blank" links
                 injectExternalLinkInterceptor()
+                // Inject JS untuk mengubah warna status bar mengikuti web
+                injectStatusBarColorScript()
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -504,6 +513,79 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
+    // Inject JS untuk mengubah warna status bar mengikuti warna header/element web
+    private fun injectStatusBarColorScript() {
+        val js = """
+            (function() {
+                // Fungsi untuk mengambil warna dari elemen
+                function getBackgroundColor(element) {
+                    while (element) {
+                        var bg = window.getComputedStyle(element).backgroundColor;
+                        if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+                            return bg;
+                        }
+                        element = element.parentElement;
+                    }
+                    return null;
+                }
+
+                // Fungsi untuk mengubah warna status bar
+                function updateStatusBarColor() {
+                    // Coba ambil warna dari header, navbar, atau body
+                    var header = document.querySelector('header') ||
+                                 document.querySelector('.header') ||
+                                 document.querySelector('.navbar') ||
+                                 document.querySelector('[class*="header"]') ||
+                                 document.querySelector('[class*="navbar"]') ||
+                                 document.querySelector('[id*="header"]') ||
+                                 document.querySelector('[id*="navbar"]') ||
+                                 document.body;
+
+                    if (header) {
+                        var color = getBackgroundColor(header);
+                        if (color && typeof AndroidStatusBar !== 'undefined') {
+                            // Convert rgb/rgba to hex
+                            if (color.startsWith('rgb')) {
+                                var rgb = color.match(/\d+/g);
+                                if (rgb && rgb.length >= 3) {
+                                    var hex = '#' +
+                                        ('0' + parseInt(rgb[0]).toString(16)).slice(-2) +
+                                        ('0' + parseInt(rgb[1]).toString(16)).slice(-2) +
+                                        ('0' + parseInt(rgb[2]).toString(16)).slice(-2);
+                                    AndroidStatusBar.setColor(hex);
+                                }
+                            } else if (color.startsWith('#')) {
+                                AndroidStatusBar.setColor(color);
+                            }
+                        }
+                    }
+                }
+
+                // Update saat load complete
+                if (document.readyState === 'complete') {
+                    setTimeout(updateStatusBarColor, 100);
+                } else {
+                    window.addEventListener('load', function() {
+                        setTimeout(updateStatusBarColor, 100);
+                    });
+                }
+
+                // Observe perubahan DOM untuk update warna
+                var observer = new MutationObserver(function(mutations) {
+                    updateStatusBarColor();
+                });
+                observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true
+                });
+
+                // Update saat scroll (untuk sticky header)
+                window.addEventListener('scroll', updateStatusBarColor);
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
     // Fallback: dipanggil dari download listener jika blob URL sampai sini
     // (misal download dipicu programatik bukan klik anchor)
     private fun downloadBlobUrl(blobUrl: String, mimeType: String, contentDisposition: String) {
@@ -788,4 +870,39 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() { super.onPause(); webView.onPause() }
     override fun onResume() { super.onResume(); webView.onResume() }
+
+    // ── Status Bar Color Control (follow web content) ──
+    fun setStatusBarColor(color: String) {
+        runOnUiThread {
+            try {
+                val parsedColor = Color.parseColor(color)
+                window.statusBarColor = parsedColor
+
+                // Set status bar content color based on brightness
+                val darkness = 1 - (0.299 * Color.red(parsedColor) + 0.587 * Color.green(parsedColor) + 0.114 * Color.blue(parsedColor)) / 255
+                @Suppress("DEPRECATION")
+                if (darkness < 0.5) {
+                    // Light background - use dark icons
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                    }
+                } else {
+                    // Dark background - use light icons
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        window.decorView.systemUiVisibility = window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+                    }
+                }
+            } catch (e: Exception) {
+                // Invalid color, ignore
+            }
+        }
+    }
+
+    // ── JavaScript Interface untuk Status Bar ──
+    inner class StatusBarInterface {
+        @JavascriptInterface
+        fun setColor(color: String) {
+            setStatusBarColor(color)
+        }
+    }
 }

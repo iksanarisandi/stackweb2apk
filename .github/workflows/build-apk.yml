@@ -406,7 +406,12 @@ jobs:
               <style name="Theme.WebViewApp.NoActionBar">
                   <item name="windowActionBar">false</item>
                   <item name="windowNoTitle">true</item>
-                  <item name="android:windowFullscreen">true</item>
+                  <!-- Transparent status bar that follows web content color -->
+                  <item name="android:windowFullscreen">false</item>
+                  <item name="android:statusBarColor" tools:targetApi="l">@android:color/transparent</item>
+                  <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">shortEdges</item>
+                  <!-- Allow drawing under system bars -->
+                  <item name="android:windowDrawsSystemBarBackgrounds">true</item>
                   <!-- Android 12+: Hide splash screen icon using transparent drawable -->
                   <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@drawable/transparent_splash</item>
                   <item name="android:windowSplashScreenBackground" tools:targetApi="31">@android:color/white</item>
