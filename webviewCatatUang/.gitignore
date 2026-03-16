@@ -67,3 +67,4 @@ lint/tmp/
 
 # Android Profiling
 *.hprof
+error_log.txt
