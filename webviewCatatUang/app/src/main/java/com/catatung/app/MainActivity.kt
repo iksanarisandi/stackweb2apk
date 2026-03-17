@@ -209,6 +209,9 @@ class MainActivity : AppCompatActivity() {
         // JavaScript interface untuk mengubah warna status bar
         webView.addJavascriptInterface(StatusBarInterface(), "AndroidStatusBar")
 
+        // JavaScript interface untuk kontrol SwipeRefreshLayout (nested scroll fix)
+        webView.addJavascriptInterface(SwipeRefreshInterface(), "AndroidSwipeRefresh")
+
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
@@ -224,6 +227,8 @@ class MainActivity : AppCompatActivity() {
                 injectExternalLinkInterceptor()
                 // Inject JS untuk mengubah warna status bar mengikuti web
                 injectStatusBarColorScript()
+                // Inject JS untuk menangani nested scroll (sidebar, dropdown fix)
+                injectNestedScrollFix()
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -677,6 +682,107 @@ class MainActivity : AppCompatActivity() {
         webView.evaluateJavascript(js, null)
     }
 
+    /**
+     * Inject JavaScript untuk mendeteksi dan menangani nested scrollable elements.
+     *
+     * Script ini bekerja dengan cara:
+     * 1. Mendeteksi touchstart pada elemen scrollable (sidebar, dropdown, dll)
+     * 2. Menonaktifkan SwipeRefreshLayout saat touch di atas elemen scrollable
+     * 3. Mengaktifkan kembali SwipeRefreshLayout saat touchend/touchcancel
+     *
+     * Ini mencegah pull-to-refresh terpicu secara tidak sengaja saat scrolling
+     * dalam nested elements seperti sidebar menu atau scrollable sections.
+     */
+    private fun injectNestedScrollFix() {
+        val js = """
+            (function() {
+                // Cek apakah script sudah dijalankan
+                if (window.__androidNestedScrollFixActive) return;
+                window.__androidNestedScrollFixActive = true;
+
+                // Fungsi untuk mendeteksi apakah suatu elemen dapat di-scroll
+                var isScrollable = function(el) {
+                    while (el && el !== document.body && el !== document.documentElement) {
+                        var style = window.getComputedStyle(el);
+
+                        // Cek overflow CSS property
+                        if (style.overflowY === 'auto' || style.overflowY === 'scroll' ||
+                            style.overflow === 'auto' || style.overflow === 'scroll') {
+                            return true;
+                        }
+
+                        // Cek tag name untuk common scrollable containers
+                        var tagName = el.tagName.toUpperCase();
+                        if (tagName === 'ASIDE' || tagName === 'NAV' || tagName === 'DIALOG') {
+                            return true;
+                        }
+
+                        // Cek class names untuk common patterns
+                        var classNames = el.className || '';
+                        if (typeof classNames === 'string') {
+                            if (classNames.includes('sidebar') ||
+                                classNames.includes('drawer') ||
+                                classNames.includes('dropdown') ||
+                                classNames.includes('modal') ||
+                                classNames.includes('overflow-auto') ||
+                                classNames.includes('overflow-scroll') ||
+                                classNames.includes('scrollable')) {
+                                return true;
+                            }
+                        }
+
+                        el = el.parentElement;
+                    }
+                    return false;
+                };
+
+                // Handler untuk touchstart - deteksi apakah di elemen scrollable
+                var handleTouchStart = function(e) {
+                    if (typeof AndroidSwipeRefresh !== 'undefined') {
+                        if (isScrollable(e.target)) {
+                            // Touch di atas elemen scrollable → matikan pull-to-refresh
+                            AndroidSwipeRefresh.setEnabled(false);
+                        } else {
+                            // Touch di atas area normal → aktifkan pull-to-refresh
+                            AndroidSwipeRefresh.setEnabled(true);
+                        }
+                    }
+                };
+
+                // Handler untuk touchend/touchcancel - selalu aktifkan kembali
+                var handleTouchEnd = function() {
+                    if (typeof AndroidSwipeRefresh !== 'undefined') {
+                        AndroidSwipeRefresh.setEnabled(true);
+                    }
+                };
+
+                // Register event listeners dengan passive mode untuk performa
+                document.addEventListener('touchstart', handleTouchStart, { passive: true });
+                document.addEventListener('touchend', handleTouchEnd, { passive: true });
+                document.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+                // Observe DOM changes untuk elemen dinamis
+                var observer = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        if (mutation.addedNodes.length > 0) {
+                            mutation.addedNodes.forEach(function(node) {
+                                if (node.nodeType === 1) {
+                                    // Elemen baru ditambahkan - pastikan listener tetap bekerja
+                                    // Tidak perlu re-register karena event delegation
+                                }
+                            });
+                        }
+                    });
+                });
+                observer.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true
+                });
+            })();
+        """.trimIndent()
+        webView.evaluateJavascript(js, null)
+    }
+
     // Fallback: dipanggil dari download listener jika blob URL sampai sini
     // (misal download dipicu programatik bukan klik anchor)
     private fun downloadBlobUrl(blobUrl: String, mimeType: String, contentDisposition: String) {
@@ -1011,6 +1117,18 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun setColor(color: String) {
             setStatusBarColor(color)
+        }
+    }
+
+    // ── JavaScript Interface untuk Kontrol SwipeRefreshLayout ──
+    // Interface ini memungkinkan JavaScript menonaktifkan/mengaktifkan pull-to-refresh
+    // berdasarkan apakah user menyentuh elemen yang scrollable (sidebar, dropdown, dll)
+    inner class SwipeRefreshInterface {
+        @JavascriptInterface
+        fun setEnabled(enabled: Boolean) {
+            runOnUiThread {
+                swipeRefreshLayout.isEnabled = enabled
+            }
         }
     }
 }
