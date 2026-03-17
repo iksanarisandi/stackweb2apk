@@ -102,7 +102,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ── Minta izin kamera + storage saat startup ──
+    // ── Minta izin kamera saat startup ──
+    // Note: We only request CAMERA permission. File picker (ACTION_GET_CONTENT) handles
+    // file selection without requiring READ_MEDIA_IMAGES/READ_EXTERNAL_STORAGE permission.
+    // This complies with Google Play policy regarding media permissions.
     private fun requestRequiredPermissions() {
         val permissions = mutableListOf<String>()
 
@@ -111,15 +114,11 @@ class MainActivity : AppCompatActivity() {
             permissions.add(Manifest.permission.CAMERA)
         }
 
-        if (Build.VERSION.SDK_INT >= 33) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
+        // Dibutuhkan untuk menyimpan gambar dari kamera atau hasil download ke storage lokal di Android 9 ke bawah
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-            }
-        } else {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }
         }
 
