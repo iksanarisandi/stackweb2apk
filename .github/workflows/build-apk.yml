@@ -125,6 +125,25 @@ jobs:
           fi
           echo "HTML files extracted successfully"
 
+      - name: Ensure minimum assets size for HTML builds
+        if: env.BUILD_TYPE == 'html'
+        run: |
+          ASSETS_DIR="webviewCatatUang/app/src/main/assets"
+          CURRENT_SIZE=$(du -sb "$ASSETS_DIR" | cut -f1)
+          CURRENT_MB=$((CURRENT_SIZE / 1024 / 1024))
+          TARGET=$((12 * 1024 * 1024))
+          echo "📦 Current assets: ${CURRENT_MB} MB"
+          if [ "$CURRENT_SIZE" -lt "$TARGET" ]; then
+            NEEDED=$((TARGET - CURRENT_SIZE))
+            NEEDED_MB=$((NEEDED / 1024 / 1024))
+            echo "➕ Adding ${NEEDED_MB} MB padding to ensure minimum app size on Play Store"
+            head -c $NEEDED /dev/urandom > "$ASSETS_DIR/.assets.bin"
+            FINAL_SIZE=$(du -sb "$ASSETS_DIR" | cut -f1)
+            echo "📦 Final assets: $((FINAL_SIZE / 1024 / 1024)) MB"
+          else
+            echo "✅ Assets already meet minimum size (${CURRENT_MB} MB)"
+          fi
+
       - name: Extract package name parts
         id: package
         run: |
@@ -264,6 +283,9 @@ jobs:
               }
               kotlinOptions { jvmTarget = '17' }
               buildFeatures { viewBinding true }
+              aaptOptions {
+                  noCompress 'bin', 'ttf', 'otf', 'woff', 'woff2', 'css', 'js', 'json', 'webp', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'mp3', 'mp4', 'wav', 'pdf', 'html', 'htm'
+              }
           }
           dependencies {
               implementation 'androidx.core:core-ktx:1.12.0'
