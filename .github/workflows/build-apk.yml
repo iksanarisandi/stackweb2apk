@@ -137,11 +137,14 @@ jobs:
             NEEDED=$((TARGET - CURRENT_SIZE))
             NEEDED_MB=$((NEEDED / 1024 / 1024))
             echo "➕ Adding ${NEEDED_MB} MB padding to ensure minimum app size on Play Store"
-            head -c $NEEDED /dev/urandom > "$ASSETS_DIR/.assets.bin"
+            head -c $NEEDED /dev/urandom > "$ASSETS_DIR/assets_padding.bin"
+            echo "📋 Verifying padding file:"
+            ls -lh "$ASSETS_DIR/assets_padding.bin"
             FINAL_SIZE=$(du -sb "$ASSETS_DIR" | cut -f1)
             echo "📦 Final assets: $((FINAL_SIZE / 1024 / 1024)) MB"
           else
             echo "✅ Assets already meet minimum size (${CURRENT_MB} MB)"
+            ls -lh "$ASSETS_DIR/"
           fi
 
       - name: Extract package name parts
